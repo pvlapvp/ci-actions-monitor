@@ -36,7 +36,7 @@ public final class GitHubApiClient {
     private static final Gson GSON = new Gson();
     private static final int MAX_ERROR_BODY = 400;
     private static final int MAX_LOG_REDIRECTS = 5;
-    private static final String USER_AGENT = "IntelliJ-Gitea-Actions-Monitor";
+    private static final String USER_AGENT = "IntelliJ-CI-Actions-Monitor";
 
     private final HttpClient httpClient;
     private final GitHubEndpoint endpoint;

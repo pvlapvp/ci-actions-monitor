@@ -3,9 +3,17 @@ package ru.pvlapvp.ciactionsmonitor.settings;
 import ru.pvlapvp.ciactionsmonitor.model.ActionsConnection;
 import ru.pvlapvp.ciactionsmonitor.model.ProviderType;
 import ru.pvlapvp.ciactionsmonitor.provider.ActionsProviderFactory;
+import ru.pvlapvp.ciactionsmonitor.provider.ConnectionInfo;
 import ru.pvlapvp.ciactionsmonitor.provider.ProviderRegistry;
+import ru.pvlapvp.ciactionsmonitor.service.ConnectionService;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.ValidationInfo;
+import com.intellij.ui.DocumentAdapter;
+import com.intellij.ui.JBColor;
 import com.intellij.ui.JBIntSpinner;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
@@ -16,10 +24,13 @@ import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
+import javax.swing.event.DocumentEvent;
+import java.awt.BorderLayout;
 import java.awt.Component;
 import java.net.URI;
 import java.util.ArrayList;
@@ -32,8 +43,8 @@ import java.util.UUID;
  * Add/edit dialog for one CI/CD connection. The token is intentionally not loaded into
  * the UI: an empty field means "keep the token stored in PasswordSafe".
  * <p>
- * Only Gitea is selectable in this stage. The provider selector is already part of the
- * dialog so GitHub can be enabled later without redesigning the settings UI.
+ * Both Gitea and GitHub are selectable. The dialog can test the current values in the
+ * background before they are saved.
  */
 public final class ConnectionDialog extends DialogWrapper {
 
@@ -47,6 +58,8 @@ public final class ConnectionDialog extends DialogWrapper {
     private JBIntSpinner timeoutSpinner;
     private JBTextArea repositoriesArea;
     private JBLabel providerHint;
+    private JButton testButton;
+    private JBTextArea testResultArea;
 
     public ConnectionDialog(@Nullable Component parent, @Nullable ActionsConnection existing) {
         super(parent, true);
@@ -74,7 +87,13 @@ public final class ConnectionDialog extends DialogWrapper {
 
         tokenField = new JPasswordField();
         providerHint = new JBLabel();
-        providerTypeCombo.addActionListener(event -> updateProviderHints());
+        providerTypeCombo.addActionListener(event -> {
+            updateProviderHints();
+            resetTestResult();
+        });
+        clearResultOnEdit(urlField);
+        clearResultOnEdit(apiUrlField);
+        clearResultOnEdit(tokenField);
         timeoutSpinner = new JBIntSpinner(
                 existing == null ? 30 : existing.safeTimeoutSeconds(),
                 5,
@@ -93,6 +112,20 @@ public final class ConnectionDialog extends DialogWrapper {
                 ? "A token is required. It is stored in IntelliJ PasswordSafe, not in XML."
                 : "Leave empty to keep the current token. A non-empty value replaces it.";
 
+        testButton = new JButton("Test Connection");
+        testButton.addActionListener(event -> runConnectionTest());
+        testResultArea = new JBTextArea(2, 38);
+        testResultArea.setEditable(false);
+        testResultArea.setLineWrap(true);
+        testResultArea.setWrapStyleWord(true);
+        testResultArea.setOpaque(false);
+        testResultArea.setBorder(null);
+        testResultArea.setFocusable(false);
+        testResultArea.setForeground(JBColor.GRAY);
+        JPanel testPanel = new JPanel(new BorderLayout(8, 0));
+        testPanel.add(testButton, BorderLayout.WEST);
+        testPanel.add(testResultArea, BorderLayout.CENTER);
+
         JPanel panel = FormBuilder.createFormBuilder()
                 .addLabeledComponent(new JBLabel("Provider:"), providerTypeCombo, 1, false)
                 .addComponent(providerHint)
@@ -101,6 +134,7 @@ public final class ConnectionDialog extends DialogWrapper {
                 .addLabeledComponent(new JBLabel("API URL:"), apiUrlField, 1, false)
                 .addLabeledComponent(new JBLabel("Access token:"), tokenField, 1, false)
                 .addComponent(new JBLabel("<html><font color='gray'>" + tokenHint + "</font></html>"))
+                .addComponent(testPanel)
                 .addLabeledComponent(new JBLabel("Request timeout (seconds):"), timeoutSpinner, 1, false)
                 .addLabeledComponent(
                         new JBLabel("<html>Repositories:<br><font color='gray'>owner/name, one per line.<br>Empty = all accessible repositories.</font></html>"),
@@ -204,6 +238,137 @@ public final class ConnectionDialog extends DialogWrapper {
     @Override
     public @Nullable JComponent getPreferredFocusedComponent() {
         return urlField;
+    }
+
+    /**
+     * Tests the values currently shown in the dialog, without saving them. The token is
+     * passed explicitly when the user typed a new one; otherwise the stored token is used.
+     */
+    private void runConnectionTest() {
+        if (testButton == null || testResultArea == null) {
+            return;
+        }
+        ProviderType providerType = getProviderType();
+        String url = normalizeServerUrl(providerType);
+        if (url.isBlank()) {
+            showTestFailure(providerType, "Server URL is required");
+            return;
+        }
+        if (!isValidHttpUrl(url)) {
+            showTestFailure(providerType, "Enter a valid http(s) URL");
+            return;
+        }
+        String apiUrl = apiUrlField.getText().trim();
+        if (!apiUrl.isEmpty() && !isValidHttpUrl(apiUrl)) {
+            showTestFailure(providerType, "Enter a valid http(s) API URL");
+            return;
+        }
+        String token = getToken();
+        if (token.isEmpty() && existing == null) {
+            showTestFailure(providerType, "Enter an access token to test the connection");
+            return;
+        }
+
+        ActionsConnection connection = new ActionsConnection(
+                connectionId,
+                providerType,
+                "",
+                url,
+                apiUrl.isEmpty() ? null : apiUrl,
+                timeoutSpinner.getNumber(),
+                List.of()
+        );
+        testButton.setEnabled(false);
+        testResultArea.setForeground(JBColor.GRAY);
+        testResultArea.setText("Testing connection...");
+        testResultArea.setToolTipText(null);
+
+        ProgressManager.getInstance().run(new Task.Backgroundable(null, "Testing Connection", true) {
+            @Override
+            public void run(@NotNull ProgressIndicator indicator) {
+                ConnectionInfo info = null;
+                String error = null;
+                try {
+                    if (!indicator.isCanceled()) {
+                        info = ConnectionService.getInstance().testConnection(
+                                connection,
+                                token.isEmpty() ? null : token
+                        );
+                    }
+                } catch (Exception e) {
+                    error = safeMessage(e);
+                }
+                ConnectionInfo finalInfo = info;
+                String finalError = error;
+                ApplicationManager.getApplication().invokeLater(
+                        () -> showTestResult(providerType, finalInfo, finalError)
+                );
+            }
+        });
+    }
+
+    private void showTestResult(@NotNull ProviderType providerType,
+                                @Nullable ConnectionInfo info,
+                                @Nullable String error) {
+        if (testButton == null || testResultArea == null || !testButton.isShowing()) {
+            return;
+        }
+        testButton.setEnabled(true);
+
+        if (info == null && error == null) {
+            resetTestResult();
+            return;
+        }
+        if (info != null) {
+            StringBuilder text = new StringBuilder("Connected: ").append(info.version());
+            if (info.account() != null && !info.account().isBlank()) {
+                text.append(" (").append(info.account()).append(')');
+            }
+            testResultArea.setForeground(JBColor.GREEN.darker());
+            testResultArea.setText(text.toString());
+            testResultArea.setToolTipText(info.apiUrl());
+            return;
+        }
+
+        StringBuilder text = new StringBuilder("Connection failed: ")
+                .append(error == null ? "unknown error" : error);
+        if (providerType == ProviderType.GITHUB) {
+            text.append(" Check token permissions: Actions — Read, Metadata — Read, Contents — No access.");
+        }
+        testResultArea.setForeground(JBColor.RED);
+        testResultArea.setText(text.toString());
+        testResultArea.setToolTipText(text.toString());
+    }
+
+    private void showTestFailure(@NotNull ProviderType providerType, @NotNull String message) {
+        if (testButton == null) {
+            return;
+        }
+        testButton.setEnabled(true);
+        showTestResult(providerType, null, message);
+    }
+
+    private void resetTestResult() {
+        if (testResultArea == null) {
+            return;
+        }
+        testResultArea.setText("");
+        testResultArea.setToolTipText(null);
+        testResultArea.setForeground(JBColor.GRAY);
+    }
+
+    private void clearResultOnEdit(@NotNull javax.swing.text.JTextComponent component) {
+        component.getDocument().addDocumentListener(new DocumentAdapter() {
+            @Override
+            public void textChanged(@NotNull DocumentEvent event) {
+                resetTestResult();
+            }
+        });
+    }
+
+    private static @NotNull String safeMessage(@NotNull Throwable throwable) {
+        String message = throwable.getMessage();
+        return message == null || message.isBlank() ? throwable.getClass().getSimpleName() : message;
     }
 
     private @NotNull ProviderType getProviderType() {

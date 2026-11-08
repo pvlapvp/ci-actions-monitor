@@ -16,7 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Base node of the Gitea service tree.
+ * Base node of the CI/CD service tree.
  * <p>
  * A node is both a service item (shown in the Services tree) and a nested
  * {@link ServiceViewContributor} for its children. The Services API calls

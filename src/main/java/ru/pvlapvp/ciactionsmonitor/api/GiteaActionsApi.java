@@ -7,8 +7,10 @@ import ru.pvlapvp.ciactionsmonitor.provider.gitea.dto.GiteaWorkflowJobsResponse;
 import ru.pvlapvp.ciactionsmonitor.provider.gitea.dto.GiteaWorkflowRunDto;
 import ru.pvlapvp.ciactionsmonitor.provider.gitea.dto.GiteaWorkflowRunsResponse;
 import ru.pvlapvp.ciactionsmonitor.provider.gitea.dto.GiteaWorkflowsResponse;
+import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,7 +29,6 @@ import java.util.List;
  */
 public final class GiteaActionsApi {
 
-    public static final int DEFAULT_PAGE_SIZE = 30;
     private static final int MAX_PAGE_SIZE = 50;
 
     private static final Type REPOSITORY_LIST = new TypeToken<List<GiteaRepositoryDto>>() {
@@ -45,6 +46,17 @@ public final class GiteaActionsApi {
 
     public @NotNull String getServerVersion() throws IOException {
         return client.getVersion();
+    }
+
+    /**
+     * {@code GET /user}. Used by the connection test to show which account the token belongs to.
+     */
+    public @Nullable String getCurrentUserLogin() throws IOException {
+        JsonObject user = client.getJsonObject("/user");
+        if (user.has("login") && !user.get("login").isJsonNull()) {
+            return user.get("login").getAsString();
+        }
+        return null;
     }
 
     /**
@@ -151,13 +163,6 @@ public final class GiteaActionsApi {
         return client.openTextStream(
                 "/repos/" + repoPath(repository.fullName) + "/actions/jobs/" + jobId + "/logs"
         );
-    }
-
-    public @NotNull String getJobLogs(@NotNull GiteaRepositoryDto repository, long jobId) throws IOException {
-        String logs = client.getText(
-                "/repos/" + repoPath(repository.fullName) + "/actions/jobs/" + jobId + "/logs"
-        );
-        return logs == null ? "" : logs;
     }
 
     public record RunPage(@NotNull List<GiteaWorkflowRunDto> runs, int totalCount) {

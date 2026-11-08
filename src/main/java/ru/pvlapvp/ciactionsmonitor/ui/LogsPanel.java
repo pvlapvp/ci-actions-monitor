@@ -17,7 +17,7 @@ import java.awt.Font;
 /**
  * Shared read-only log panel for the Services tool window.
  * <p>
- * Updates replace the whole document (Gitea returns the accumulated log), so lines
+ * Updates replace the whole document (providers return the accumulated log), so lines
  * are never duplicated. The user's scroll position is preserved unless they were
  * already at the bottom.
  */

@@ -121,7 +121,13 @@ public final class GitHubActionsApi {
         } else {
             version = "GitHub Enterprise";
         }
-        return new ConnectionInfo(ProviderType.GITHUB, version, client.getApiBaseUrl(), null);
+        // /user validates the token itself; the version probe is available unauthenticated.
+        String account = null;
+        JsonObject user = client.getJsonObject("/user");
+        if (user.has("login") && !user.get("login").isJsonNull()) {
+            account = user.get("login").getAsString();
+        }
+        return new ConnectionInfo(ProviderType.GITHUB, version, client.getApiBaseUrl(), account);
     }
 
     private static int safePageSize(int pageSize) {

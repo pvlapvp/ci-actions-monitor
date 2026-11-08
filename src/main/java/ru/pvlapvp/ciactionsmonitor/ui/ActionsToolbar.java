@@ -20,7 +20,7 @@ final class ActionsToolbar {
     }
 
     static @NotNull AnAction refresh(@NotNull Project project, @NotNull ActionsServiceNode node) {
-        return new AnAction("Refresh", "Reload children from Gitea", AllIcons.Actions.Refresh) {
+        return new AnAction("Refresh", "Reload children from the provider", AllIcons.Actions.Refresh) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent event) {
                 ActionsServiceEvents.fireChildrenChanged(project, node);

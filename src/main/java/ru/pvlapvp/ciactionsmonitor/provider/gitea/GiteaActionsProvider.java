@@ -122,7 +122,7 @@ public final class GiteaActionsProvider implements ActionsProvider {
                 ProviderType.GITEA,
                 api.getServerVersion(),
                 api.getClient().getApiBaseUrl(),
-                null
+                api.getCurrentUserLogin()
         );
     }
 

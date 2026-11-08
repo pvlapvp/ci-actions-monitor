@@ -3,6 +3,7 @@ package ru.pvlapvp.ciactionsmonitor.service;
 import ru.pvlapvp.ciactionsmonitor.model.ActionsConnection;
 import ru.pvlapvp.ciactionsmonitor.model.ProviderType;
 import ru.pvlapvp.ciactionsmonitor.provider.ActionsProvider;
+import ru.pvlapvp.ciactionsmonitor.provider.ConnectionInfo;
 import ru.pvlapvp.ciactionsmonitor.provider.ProviderRegistry;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
@@ -59,8 +60,8 @@ public final class ConnectionService {
      * Tests a URL/token pair. If {@code token} is blank, the stored token is used.
      * Blocking; call from a background thread.
      */
-    public @NotNull String testConnection(@NotNull ActionsConnection connection,
-                                          @Nullable String token) throws IOException {
+    public @NotNull ConnectionInfo testConnection(@NotNull ActionsConnection connection,
+                                                  @Nullable String token) throws IOException {
         requireConfigured(connection);
         String effectiveToken = token == null ? "" : token.trim();
         if (effectiveToken.isEmpty()) {
@@ -70,7 +71,7 @@ public final class ConnectionService {
             throw new IOException("Access token is empty");
         }
         ActionsProvider provider = ProviderRegistry.getInstance().create(connection, effectiveToken);
-        return provider.testConnection().version();
+        return provider.testConnection();
     }
 
     public void invalidate(@NotNull String connectionId) {

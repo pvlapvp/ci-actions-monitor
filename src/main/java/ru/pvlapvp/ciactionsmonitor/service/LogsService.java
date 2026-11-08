@@ -17,10 +17,8 @@ import com.intellij.util.concurrency.AppExecutorUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -38,7 +36,7 @@ import java.util.regex.Pattern;
 public final class LogsService implements Disposable {
 
     private static final int REFRESH_INTERVAL_MS = 4_000;
-    private static final int LOG_READ_BUFFER_BYTES = 64 * 1024;
+    private static final long DEFAULT_RATE_LIMIT_PAUSE_MS = 60_000;
     private static final int MAX_LOG_BYTES = 10 * 1024 * 1024;
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
     private static final Pattern ANSI_ESCAPE = Pattern.compile("\u001B\\[[;\\d]*[ -/]*[@-~]");
@@ -52,6 +50,7 @@ public final class LogsService implements Disposable {
     private volatile JobSelection current;
     private volatile JobLogStream activeStream;
     private volatile boolean disposed;
+    private volatile long pauseUntilMillis;
     private volatile String lastRawLog = "";
 
     public LogsService(@NotNull Project project) {
@@ -78,7 +77,7 @@ public final class LogsService implements Disposable {
         if (selection != null && selection.isSameJob(connection, repository, job.id())) {
             selection.job = job;
             if (job.isActive()) {
-                schedule(selection.generation);
+                schedule(selection.generation, retryDelayMillis(null, null));
             }
             return;
         }
@@ -156,7 +155,7 @@ public final class LogsService implements Disposable {
                         cancelled = true;
                     } else {
                         activeStream = logStream;
-                        LogRead result = readLog(selection, expectedGeneration, logStream);
+                        JobLogTextReader.Result result = readLog(selection, expectedGeneration, logStream);
                         if (result == null) {
                             cancelled = true;
                         } else {
@@ -208,37 +207,16 @@ public final class LogsService implements Disposable {
         });
     }
 
-    private @Nullable LogRead readLog(@NotNull JobSelection selection,
-                                       long expectedGeneration,
-                                       @NotNull JobLogStream logStream) throws IOException {
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        byte[] chunk = new byte[LOG_READ_BUFFER_BYTES];
-        boolean truncated = false;
-
+    private @Nullable JobLogTextReader.Result readLog(@NotNull JobSelection selection,
+                                                      long expectedGeneration,
+                                                      @NotNull JobLogStream logStream) throws IOException {
         try (InputStream input = logStream.stream()) {
-            while (true) {
-                if (isCancelled(selection, expectedGeneration)) {
-                    return null;
-                }
-                int read = input.read(chunk);
-                if (read < 0) {
-                    break;
-                }
-                int remaining = MAX_LOG_BYTES - buffer.size();
-                if (remaining <= 0) {
-                    truncated = true;
-                    break;
-                }
-                int toWrite = Math.min(read, remaining);
-                buffer.write(chunk, 0, toWrite);
-                if (toWrite < read || buffer.size() >= MAX_LOG_BYTES) {
-                    truncated = true;
-                    break;
-                }
-            }
+            return JobLogTextReader.read(
+                    input,
+                    MAX_LOG_BYTES,
+                    () -> isCancelled(selection, expectedGeneration)
+            );
         }
-
-        return new LogRead(buffer.toString(StandardCharsets.UTF_8), truncated);
     }
 
     private boolean isCancelled(@NotNull JobSelection selection, long expectedGeneration) {
@@ -276,7 +254,7 @@ public final class LogsService implements Disposable {
             panel.showLogs(title, display, statusText);
 
             if (status.isActive() && !jobUnavailable) {
-                schedule(selection.generation);
+                schedule(selection.generation, retryDelayMillis(logError, jobError));
             } else {
                 panel.setStatus(statusText, status == ActionsStatus.FAILED);
             }
@@ -295,7 +273,7 @@ public final class LogsService implements Disposable {
                     } else {
                         panel.showMessage(title, "Waiting for the job log...", "Log not available yet");
                     }
-                    schedule(selection.generation);
+                    schedule(selection.generation, retryDelayMillis(logError, jobError));
                 } else {
                     panel.showMessage(
                             title,
@@ -317,16 +295,40 @@ public final class LogsService implements Disposable {
             panel.showError(title, "Cannot load job log:\n\n" + message, "Log temporarily unavailable");
         }
         if (status.isActive() && !jobUnavailable) {
-            schedule(selection.generation);
+            schedule(selection.generation, retryDelayMillis(logError, jobError));
         }
     }
 
-    private void schedule(long expectedGeneration) {
+    private void schedule(long expectedGeneration, long delayMillis) {
         if (disposed || project.isDisposed() || current == null || generation.get() != expectedGeneration) {
             return;
         }
         alarm.cancelAllRequests();
-        alarm.addRequest(() -> loadLogs(expectedGeneration), REFRESH_INTERVAL_MS);
+        alarm.addRequest(() -> loadLogs(expectedGeneration), Math.max(1, delayMillis));
+    }
+
+    /**
+     * Uses Retry-After/X-RateLimit-Reset from a rate-limited response, falling back to a
+     * one-minute pause. This keeps log polling from burning the remaining quota.
+     */
+    private long retryDelayMillis(@Nullable Exception logError, @Nullable Exception jobError) {
+        long now = System.currentTimeMillis();
+        long retryAt = 0;
+        retryAt = Math.max(retryAt, rateLimitRetryAt(logError, now));
+        retryAt = Math.max(retryAt, rateLimitRetryAt(jobError, now));
+        if (retryAt > now) {
+            pauseUntilMillis = Math.max(pauseUntilMillis, retryAt);
+        }
+        return Math.max(REFRESH_INTERVAL_MS, pauseUntilMillis - now);
+    }
+
+    private static long rateLimitRetryAt(@Nullable Exception error, long now) {
+        if (error instanceof ActionsApiException apiException && apiException.isRateLimited()) {
+            return apiException.getRetryAfter() == null
+                    ? now + DEFAULT_RATE_LIMIT_PAUSE_MS
+                    : apiException.getRetryAfter().toEpochMilli();
+        }
+        return 0;
     }
 
     private void closeActiveStream() {
@@ -371,13 +373,11 @@ public final class LogsService implements Disposable {
     public void dispose() {
         disposed = true;
         current = null;
+        pauseUntilMillis = 0;
         generation.incrementAndGet();
         alarm.cancelAllRequests();
         closeActiveStream();
         alarm.dispose();
-    }
-
-    private record LogRead(@NotNull String text, boolean truncated) {
     }
 
     private static final class JobSelection {

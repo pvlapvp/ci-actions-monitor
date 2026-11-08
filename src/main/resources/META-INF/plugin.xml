@@ -8,7 +8,7 @@
     <description><![CDATA[
         Browse Gitea and GitHub Actions in the standard Services tool window:
         connections, repositories, workflows, runs, jobs and job logs.
-        Tokens are stored in IntelliJ PasswordSafe.
+        Test connections and store tokens in IntelliJ PasswordSafe.
     ]]></description>
 
     <idea-version since-build="263"/>

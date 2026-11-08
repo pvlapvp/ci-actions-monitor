@@ -20,6 +20,14 @@ dependencies {
         // IntelliJ IDEA Community is no longer published starting with 2025.3.
         intellijIdea("2026.3")
     }
+
+    testImplementation(platform("org.junit:junit-bom:5.11.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 java {

@@ -98,13 +98,6 @@ public final class GiteaApiClient {
     }
 
     /**
-     * Downloads a text resource, such as job logs ({@code text/plain}).
-     */
-    public String getText(@NotNull String path) throws IOException {
-        return execute(path, "text/plain, */*;q=0.8");
-    }
-
-    /**
      * Opens a text resource as a stream. The caller owns the returned stream and must
      * close it; closing the stream also releases the HTTP connection.
      */

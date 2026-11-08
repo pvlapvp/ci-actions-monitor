@@ -10,7 +10,7 @@ import javax.swing.Icon;
 import java.awt.Color;
 
 /**
- * Shared presentation helpers for Gitea nodes.
+ * Shared presentation helpers for CI/CD nodes.
  */
 final class ActionsUi {
 
