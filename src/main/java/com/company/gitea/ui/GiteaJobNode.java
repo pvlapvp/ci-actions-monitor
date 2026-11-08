@@ -1,6 +1,6 @@
 package com.company.gitea.ui;
 
-import com.company.gitea.model.GiteaServer;
+import com.company.gitea.model.ActionsConnection;
 import com.company.gitea.model.GiteaStatus;
 import com.company.gitea.model.Repository;
 import com.company.gitea.model.WorkflowJob;
@@ -21,15 +21,15 @@ import java.util.List;
  */
 public final class GiteaJobNode extends GiteaServiceNode {
 
-    private final GiteaServer server;
+    private final ActionsConnection connection;
     private final Repository repository;
     private final WorkflowJob job;
 
-    public GiteaJobNode(@NotNull GiteaServer server,
+    public GiteaJobNode(@NotNull ActionsConnection connection,
                         @NotNull Repository repository,
                         @NotNull WorkflowJob job) {
-        super("job:" + server.id() + ":" + repository.displayName() + ":" + job.runId() + ":" + job.id());
-        this.server = server;
+        super("job:" + connection.id() + ":" + repository.displayName() + ":" + job.runId() + ":" + job.id());
+        this.connection = connection;
         this.repository = repository;
         this.job = job;
     }
@@ -65,7 +65,7 @@ public final class GiteaJobNode extends GiteaServiceNode {
 
     @Override
     public void onNodeSelected(@NotNull Project project) {
-        project.getService(LogsService.class).selectJob(server, repository, job);
+        project.getService(LogsService.class).selectJob(connection, repository, job);
     }
 
     @Override

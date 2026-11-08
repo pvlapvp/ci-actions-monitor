@@ -133,7 +133,7 @@ public final class GiteaAutoRefreshService implements Disposable {
         try {
             int pages = project.getService(GiteaTreeStateService.class).getPageCount(node.id());
             ActionsMonitorService.RunList runList = project.getService(ActionsMonitorService.class)
-                    .loadRuns(node.server(), node.repository(), node.workflow(), pages);
+                    .loadRuns(node.connection(), node.repository(), node.workflow(), pages);
             if (disposed || project.isDisposed()) {
                 return;
             }
@@ -168,7 +168,7 @@ public final class GiteaAutoRefreshService implements Disposable {
         try {
             int pages = project.getService(GiteaTreeStateService.class).getPageCount(node.id());
             ActionsMonitorService.JobList jobList = project.getService(ActionsMonitorService.class)
-                    .loadJobs(node.server(), node.repository(), node.run(), pages);
+                    .loadJobs(node.connection(), node.repository(), node.run(), pages);
             if (disposed || project.isDisposed()) {
                 return;
             }
@@ -201,7 +201,7 @@ public final class GiteaAutoRefreshService implements Disposable {
         for (WorkflowRun run : newRuns) {
             newById.put(run.id(), run);
             WorkflowRun oldRun = oldRuns.get(run.id());
-            GiteaRunNode target = new GiteaRunNode(parent.server(), parent.repository(), parent.workflow(), run);
+            GiteaRunNode target = new GiteaRunNode(parent.connection(), parent.repository(), parent.workflow(), run);
             if (oldRun == null) {
                 GiteaServiceEvents.fireServiceAdded(project, target, parent);
             } else if (!oldRun.equals(run)) {
@@ -212,7 +212,7 @@ public final class GiteaAutoRefreshService implements Disposable {
             if (!newById.containsKey(entry.getKey())) {
                 GiteaServiceEvents.fireServiceRemoved(
                         project,
-                        new GiteaRunNode(parent.server(), parent.repository(), parent.workflow(), entry.getValue())
+                        new GiteaRunNode(parent.connection(), parent.repository(), parent.workflow(), entry.getValue())
                 );
             }
         }
@@ -225,7 +225,7 @@ public final class GiteaAutoRefreshService implements Disposable {
         for (WorkflowJob job : newJobs) {
             newById.put(job.id(), job);
             WorkflowJob oldJob = oldJobs.get(job.id());
-            GiteaJobNode target = new GiteaJobNode(parent.server(), parent.repository(), job);
+            GiteaJobNode target = new GiteaJobNode(parent.connection(), parent.repository(), job);
             if (oldJob == null) {
                 GiteaServiceEvents.fireServiceAdded(project, target, parent);
             } else if (!oldJob.equals(job)) {
@@ -236,7 +236,7 @@ public final class GiteaAutoRefreshService implements Disposable {
             if (!newById.containsKey(entry.getKey())) {
                 GiteaServiceEvents.fireServiceRemoved(
                         project,
-                        new GiteaJobNode(parent.server(), parent.repository(), entry.getValue())
+                        new GiteaJobNode(parent.connection(), parent.repository(), entry.getValue())
                 );
             }
         }

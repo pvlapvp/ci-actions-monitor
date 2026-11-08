@@ -1,6 +1,6 @@
 package com.company.gitea.ui;
 
-import com.company.gitea.model.GiteaServer;
+import com.company.gitea.model.ActionsConnection;
 import com.company.gitea.model.Repository;
 import com.company.gitea.model.Workflow;
 import com.company.gitea.service.ActionsMonitorService;
@@ -15,17 +15,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A repository configured for a server.
+ * A repository configured for a connection.
  */
 public final class GiteaRepositoryNode extends GiteaServiceNode implements ServiceViewLazyContributor {
 
-    private final GiteaServer server;
+    private final ActionsConnection connection;
     private final Repository repository;
 
-    public GiteaRepositoryNode(@NotNull GiteaServer server, @NotNull Repository repository) {
-        super("repo:" + server.id() + ":" + repository.displayName());
-        this.server = server;
+    public GiteaRepositoryNode(@NotNull ActionsConnection connection, @NotNull Repository repository) {
+        super("repo:" + connection.id() + ":" + repository.displayName());
+        this.connection = connection;
         this.repository = repository;
+    }
+
+    public @NotNull ActionsConnection connection() {
+        return connection;
     }
 
     public @NotNull Repository repository() {
@@ -35,10 +39,10 @@ public final class GiteaRepositoryNode extends GiteaServiceNode implements Servi
     @Override
     protected @NotNull List<GiteaServiceNode> loadChildren(@NotNull Project project) throws Exception {
         List<Workflow> workflows = project.getService(ActionsMonitorService.class)
-                .loadWorkflows(server, repository);
+                .loadWorkflows(connection, repository);
         List<GiteaServiceNode> children = new ArrayList<>(workflows.size() + 1);
         for (Workflow workflow : workflows) {
-            children.add(new GiteaWorkflowNode(server, repository, workflow));
+            children.add(new GiteaWorkflowNode(connection, repository, workflow));
         }
         if (children.isEmpty()) {
             children.add(new GiteaMessageNode(
@@ -53,9 +57,9 @@ public final class GiteaRepositoryNode extends GiteaServiceNode implements Servi
     public @NotNull PresentationData createPresentation(@NotNull Project project) {
         PresentationData data = new PresentationData();
         data.setPresentableText(repository.displayName());
-        data.setLocationString(server.displayName());
+        data.setLocationString(connection.displayName());
         data.setIcon(AllIcons.Nodes.Folder);
-        String webUrl = repository.webUrl(server);
+        String webUrl = repository.webUrl(connection);
         if (webUrl != null) {
             data.setTooltip(webUrl);
         }
@@ -66,7 +70,7 @@ public final class GiteaRepositoryNode extends GiteaServiceNode implements Servi
     public @NotNull List<AnAction> createToolbarActions(@NotNull Project project) {
         List<AnAction> actions = new ArrayList<>();
         actions.add(GiteaActions.refresh(project, this));
-        AnAction open = GiteaActions.openUrlOrNull(repository.webUrl(server));
+        AnAction open = GiteaActions.openUrlOrNull(repository.webUrl(connection));
         if (open != null) {
             actions.add(open);
         }
@@ -76,6 +80,6 @@ public final class GiteaRepositoryNode extends GiteaServiceNode implements Servi
 
     @Override
     public String browserUrl() {
-        return repository.webUrl(server);
+        return repository.webUrl(connection);
     }
 }

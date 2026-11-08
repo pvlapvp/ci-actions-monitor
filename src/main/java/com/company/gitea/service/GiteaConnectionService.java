@@ -1,10 +1,9 @@
 package com.company.gitea.service;
 
 import com.company.gitea.model.ActionsConnection;
-import com.company.gitea.model.GiteaServer;
+import com.company.gitea.model.ProviderType;
 import com.company.gitea.provider.ActionsProvider;
 import com.company.gitea.provider.ProviderRegistry;
-import com.company.gitea.provider.gitea.GiteaProviderFactory;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
 import org.jetbrains.annotations.NotNull;
@@ -16,9 +15,9 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Application-level cache of {@link ActionsProvider} instances, one per server.
+ * Application-level cache of {@link ActionsProvider} instances, one per connection.
  * <p>
- * The cache is invalidated when the URL/timeout changes or when settings explicitly
+ * The cache is invalidated when the URL/type/timeout changes or when settings explicitly
  * call {@link #invalidate(String)}. Tokens are read from PasswordSafe only on a cache
  * miss, so expanding the Services tree does not touch the credential store for every node.
  */
@@ -31,25 +30,26 @@ public final class GiteaConnectionService {
         return ApplicationManager.getApplication().getService(GiteaConnectionService.class);
     }
 
-    public @NotNull ActionsProvider getProvider(@NotNull GiteaServer server) throws IOException {
-        requireConfigured(server);
+    public @NotNull ActionsProvider getProvider(@NotNull ActionsConnection connection) throws IOException {
+        requireConfigured(connection);
 
-        CachedProvider current = cache.get(server.id());
-        if (current != null && current.matches(server)) {
+        CachedProvider current = cache.get(connection.id());
+        if (current != null && current.matches(connection)) {
             return current.provider;
         }
 
-        String token = GiteaCredentialService.getInstance().getTokenBlocking(server.id());
+        String token = GiteaCredentialService.getInstance().getTokenBlocking(connection.id());
         if (token.isBlank()) {
-            throw new IOException("No access token is stored for server \"" + server.displayName()
+            throw new IOException("No access token is stored for connection \"" + connection.displayName()
                     + "\". Open Settings | Tools | Gitea Actions Monitor and set a token.");
         }
 
-        ActionsConnection connection = GiteaProviderFactory.toConnection(server);
         ActionsProvider provider = ProviderRegistry.getInstance().create(connection, token);
-        cache.put(server.id(), new CachedProvider(
-                server.normalizedUrl(),
-                server.safeTimeoutSeconds(),
+        cache.put(connection.id(), new CachedProvider(
+                connection.providerType(),
+                connection.serverUrl().trim(),
+                connection.apiUrl(),
+                connection.safeTimeoutSeconds(),
                 provider
         ));
         return provider;
@@ -59,31 +59,31 @@ public final class GiteaConnectionService {
      * Tests a URL/token pair. If {@code token} is blank, the stored token is used.
      * Blocking; call from a background thread.
      */
-    public @NotNull String testConnection(@NotNull GiteaServer server, @Nullable String token) throws IOException {
-        requireConfigured(server);
+    public @NotNull String testConnection(@NotNull ActionsConnection connection,
+                                          @Nullable String token) throws IOException {
+        requireConfigured(connection);
         String effectiveToken = token == null ? "" : token.trim();
         if (effectiveToken.isEmpty()) {
-            effectiveToken = GiteaCredentialService.getInstance().getTokenBlocking(server.id());
+            effectiveToken = GiteaCredentialService.getInstance().getTokenBlocking(connection.id());
         }
         if (effectiveToken.isEmpty()) {
             throw new IOException("Access token is empty");
         }
-        ActionsConnection connection = GiteaProviderFactory.toConnection(server);
         ActionsProvider provider = ProviderRegistry.getInstance().create(connection, effectiveToken);
         return provider.testConnection().version();
     }
 
-    public void invalidate(@NotNull String serverId) {
-        cache.remove(serverId);
+    public void invalidate(@NotNull String connectionId) {
+        cache.remove(connectionId);
     }
 
     public void invalidateAll() {
         cache.clear();
     }
 
-    private static void requireConfigured(@NotNull GiteaServer server) throws IOException {
-        if (!server.isConfigured()) {
-            throw new IOException("Gitea server is not configured");
+    private static void requireConfigured(@NotNull ActionsConnection connection) throws IOException {
+        if (!connection.isConfigured()) {
+            throw new IOException("CI/CD connection is not configured");
         }
     }
 
@@ -92,19 +92,29 @@ public final class GiteaConnectionService {
      * A token change is handled by {@link #invalidate(String)} from settings.
      */
     private static final class CachedProvider {
-        private final String normalizedUrl;
+        private final ProviderType providerType;
+        private final String serverUrl;
+        private final String apiUrl;
         private final int timeoutSeconds;
         private final ActionsProvider provider;
 
-        private CachedProvider(String normalizedUrl, int timeoutSeconds, ActionsProvider provider) {
-            this.normalizedUrl = normalizedUrl;
+        private CachedProvider(ProviderType providerType,
+                               String serverUrl,
+                               String apiUrl,
+                               int timeoutSeconds,
+                               ActionsProvider provider) {
+            this.providerType = providerType;
+            this.serverUrl = serverUrl;
+            this.apiUrl = apiUrl;
             this.timeoutSeconds = timeoutSeconds;
             this.provider = provider;
         }
 
-        private boolean matches(@NotNull GiteaServer server) {
-            return Objects.equals(normalizedUrl, server.normalizedUrl())
-                    && timeoutSeconds == server.safeTimeoutSeconds();
+        private boolean matches(@NotNull ActionsConnection connection) {
+            return providerType == connection.providerType()
+                    && Objects.equals(serverUrl, connection.serverUrl().trim())
+                    && Objects.equals(apiUrl, connection.apiUrl())
+                    && timeoutSeconds == connection.safeTimeoutSeconds();
         }
     }
 }

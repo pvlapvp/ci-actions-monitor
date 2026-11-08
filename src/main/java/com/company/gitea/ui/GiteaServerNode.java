@@ -1,6 +1,6 @@
 package com.company.gitea.ui;
 
-import com.company.gitea.model.GiteaServer;
+import com.company.gitea.model.ActionsConnection;
 import com.company.gitea.model.Repository;
 import com.company.gitea.service.ActionsMonitorService;
 import com.intellij.execution.services.ServiceViewLazyContributor;
@@ -15,27 +15,27 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Root child: one configured Gitea server.
+ * Root child: one configured CI/CD connection.
  */
 public final class GiteaServerNode extends GiteaServiceNode implements ServiceViewLazyContributor {
 
-    private final GiteaServer server;
+    private final ActionsConnection connection;
 
-    public GiteaServerNode(@NotNull GiteaServer server) {
-        super("server:" + server.id());
-        this.server = server;
+    public GiteaServerNode(@NotNull ActionsConnection connection) {
+        super("server:" + connection.id());
+        this.connection = connection;
     }
 
-    public @NotNull GiteaServer server() {
-        return server;
+    public @NotNull ActionsConnection connection() {
+        return connection;
     }
 
     @Override
     protected @NotNull List<GiteaServiceNode> loadChildren(@NotNull Project project) throws IOException {
-        List<Repository> repositories = project.getService(ActionsMonitorService.class).loadRepositories(server);
+        List<Repository> repositories = project.getService(ActionsMonitorService.class).loadRepositories(connection);
         List<GiteaServiceNode> children = new ArrayList<>(repositories.size() + 1);
         for (Repository repository : repositories) {
-            children.add(new GiteaRepositoryNode(server, repository));
+            children.add(new GiteaRepositoryNode(connection, repository));
         }
         if (children.isEmpty()) {
             children.add(new GiteaMessageNode(
@@ -50,10 +50,10 @@ public final class GiteaServerNode extends GiteaServiceNode implements ServiceVi
     @Override
     public @NotNull PresentationData createPresentation(@NotNull Project project) {
         PresentationData data = new PresentationData();
-        data.setPresentableText(server.displayName());
-        data.setLocationString(server.normalizedUrl());
+        data.setPresentableText(connection.displayName());
+        data.setLocationString(connection.serverUrl());
         data.setIcon(AllIcons.Nodes.Services);
-        data.setTooltip(server.normalizedUrl());
+        data.setTooltip(connection.serverUrl());
         return data;
     }
 
@@ -61,7 +61,7 @@ public final class GiteaServerNode extends GiteaServiceNode implements ServiceVi
     public @NotNull List<AnAction> createToolbarActions(@NotNull Project project) {
         List<AnAction> actions = new ArrayList<>();
         actions.add(GiteaActions.refresh(project, this));
-        AnAction open = GiteaActions.openUrlOrNull(server.normalizedUrl());
+        AnAction open = GiteaActions.openUrlOrNull(connection.serverUrl());
         if (open != null) {
             actions.add(open);
         }
@@ -71,6 +71,6 @@ public final class GiteaServerNode extends GiteaServiceNode implements ServiceVi
 
     @Override
     public String browserUrl() {
-        return server.normalizedUrl();
+        return connection.serverUrl();
     }
 }

@@ -35,11 +35,11 @@ public record Workflow(
         return state != null && "disabled".equalsIgnoreCase(state);
     }
 
-    public @Nullable String webUrl(@NotNull GiteaServer server, @NotNull Repository repository) {
+    public @Nullable String webUrl(@NotNull ActionsConnection connection, @NotNull Repository repository) {
         if (htmlUrl != null && !htmlUrl.isBlank()) {
             return htmlUrl;
         }
-        String base = repository.webUrl(server);
+        String base = repository.webUrl(connection);
         return base == null ? null : base + "/actions?workflow=" + (id == null ? "" : id);
     }
 }

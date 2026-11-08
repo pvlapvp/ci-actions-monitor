@@ -1,6 +1,6 @@
 package com.company.gitea.settings;
 
-import com.company.gitea.model.GiteaServer;
+import com.company.gitea.model.ActionsConnection;
 import com.company.gitea.service.GiteaAutoRefreshService;
 import com.company.gitea.service.GiteaConnectionService;
 import com.company.gitea.service.GiteaCredentialService;
@@ -37,14 +37,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Settings page for server/repository configuration.
+ * Settings page for connection/repository configuration.
  * <p>
  * Tokens are never shown. New tokens are written to PasswordSafe asynchronously
  * when the settings are applied.
  */
 public final class GiteaSettingsConfigurable implements SearchableConfigurable {
 
-    private final List<GiteaServer> workingServers = new ArrayList<>();
+    private final List<ActionsConnection> workingServers = new ArrayList<>();
     private final Map<String, String> pendingTokens = new HashMap<>();
     private final Set<String> removedServerIds = new HashSet<>();
 
@@ -66,7 +66,7 @@ public final class GiteaSettingsConfigurable implements SearchableConfigurable {
 
     @Override
     public @Nullable JComponent createComponent() {
-        tableModel = new DefaultTableModel(new Object[]{"Name", "Server URL", "Repositories"}, 0) {
+        tableModel = new DefaultTableModel(new Object[]{"Name", "Provider", "Server URL", "Repositories"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
@@ -107,7 +107,7 @@ public final class GiteaSettingsConfigurable implements SearchableConfigurable {
 
         JBLabel tokenNote = new JBLabel(
                 "<html>Access tokens are stored in IntelliJ <b>PasswordSafe</b>, not in the plugin XML. "
-                        + "A token is bound to a server and removed when the server is deleted.</html>"
+                        + "A token is bound to a connection and removed when the connection is deleted.</html>"
         );
         tokenNote.setForeground(JBColor.GRAY);
 
@@ -139,9 +139,9 @@ public final class GiteaSettingsConfigurable implements SearchableConfigurable {
 
         settings.setServers(workingServers);
 
-        for (String serverId : removedServerIds) {
-            credentials.deleteToken(serverId);
-            connections.invalidate(serverId);
+        for (String connectionId : removedServerIds) {
+            credentials.deleteToken(connectionId);
+            connections.invalidate(connectionId);
         }
         for (Map.Entry<String, String> entry : pendingTokens.entrySet()) {
             credentials.setToken(entry.getKey(), entry.getValue());
@@ -186,11 +186,12 @@ public final class GiteaSettingsConfigurable implements SearchableConfigurable {
             return;
         }
         tableModel.setRowCount(0);
-        for (GiteaServer server : workingServers) {
+        for (ActionsConnection connection : workingServers) {
             tableModel.addRow(new Object[]{
-                    server.displayName(),
-                    server.normalizedUrl(),
-                    repositoriesText(server)
+                    connection.displayName(),
+                    connection.providerType().displayName(),
+                    connection.serverUrl(),
+                    repositoriesText(connection)
             });
         }
         updateButtons();
@@ -210,11 +211,11 @@ public final class GiteaSettingsConfigurable implements SearchableConfigurable {
         if (!dialog.showAndGet()) {
             return;
         }
-        GiteaServer server = dialog.getServer();
-        workingServers.add(server);
-        pendingTokens.put(server.id(), dialog.getToken());
+        ActionsConnection connection = dialog.getServer();
+        workingServers.add(connection);
+        pendingTokens.put(connection.id(), dialog.getToken());
         fillTable();
-        selectServer(server.id());
+        selectServer(connection.id());
     }
 
     private void editSelectedServer() {
@@ -222,12 +223,12 @@ public final class GiteaSettingsConfigurable implements SearchableConfigurable {
         if (row < 0 || row >= workingServers.size()) {
             return;
         }
-        GiteaServer existing = workingServers.get(row);
+        ActionsConnection existing = workingServers.get(row);
         GiteaServerDialog dialog = new GiteaServerDialog(panel, existing);
         if (!dialog.showAndGet()) {
             return;
         }
-        GiteaServer updated = dialog.getServer();
+        ActionsConnection updated = dialog.getServer();
         workingServers.set(row, updated);
         String token = dialog.getToken();
         if (!token.isBlank()) {
@@ -242,35 +243,35 @@ public final class GiteaSettingsConfigurable implements SearchableConfigurable {
         if (row < 0 || row >= workingServers.size()) {
             return;
         }
-        GiteaServer server = workingServers.get(row);
+        ActionsConnection connection = workingServers.get(row);
         int answer = Messages.showYesNoDialog(
                 panel,
-                "Remove server \"" + server.displayName() + "\" and its stored token?",
-                "Remove Gitea Server",
+                "Remove connection \"" + connection.displayName() + "\" and its stored token?",
+                "Remove Connection",
                 Messages.getQuestionIcon()
         );
         if (answer != Messages.YES) {
             return;
         }
         workingServers.remove(row);
-        pendingTokens.remove(server.id());
-        removedServerIds.add(server.id());
+        pendingTokens.remove(connection.id());
+        removedServerIds.add(connection.id());
         fillTable();
     }
 
-    private void selectServer(@NotNull String serverId) {
+    private void selectServer(@NotNull String connectionId) {
         for (int row = 0; row < workingServers.size(); row++) {
-            if (workingServers.get(row).id().equals(serverId)) {
+            if (workingServers.get(row).id().equals(connectionId)) {
                 table.setRowSelectionInterval(row, row);
                 return;
             }
         }
     }
 
-    private static @NotNull String repositoriesText(@NotNull GiteaServer server) {
-        if (server.repositories().isEmpty()) {
+    private static @NotNull String repositoriesText(@NotNull ActionsConnection connection) {
+        if (connection.repositories().isEmpty()) {
             return "All accessible";
         }
-        return String.join(", ", server.repositories());
+        return String.join(", ", connection.repositories());
     }
 }

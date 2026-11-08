@@ -1,7 +1,7 @@
 package com.company.gitea.service;
 
 import com.company.gitea.api.GiteaApiClient.GiteaApiException;
-import com.company.gitea.model.GiteaServer;
+import com.company.gitea.model.ActionsConnection;
 import com.company.gitea.model.GiteaStatus;
 import com.company.gitea.model.Repository;
 import com.company.gitea.model.WorkflowJob;
@@ -59,7 +59,7 @@ public final class LogsService implements Disposable {
     /**
      * Called on the EDT when a job node becomes selected.
      */
-    public void selectJob(@NotNull GiteaServer server,
+    public void selectJob(@NotNull ActionsConnection server,
                           @NotNull Repository repository,
                           @NotNull WorkflowJob job) {
         if (disposed) {
@@ -271,12 +271,12 @@ public final class LogsService implements Disposable {
 
     private static final class JobSelection {
         private final long generation;
-        private final GiteaServer server;
+        private final ActionsConnection server;
         private final Repository repository;
         private volatile WorkflowJob job;
 
         private JobSelection(long generation,
-                             GiteaServer server,
+                             ActionsConnection server,
                              Repository repository,
                              WorkflowJob job) {
             this.generation = generation;
@@ -285,7 +285,7 @@ public final class LogsService implements Disposable {
             this.job = job;
         }
 
-        private boolean isSameJob(GiteaServer server, Repository repository, long jobId) {
+        private boolean isSameJob(ActionsConnection server, Repository repository, long jobId) {
             return this.server.id().equals(server.id())
                     && this.repository.displayName().equals(repository.displayName())
                     && this.job.id() == jobId;

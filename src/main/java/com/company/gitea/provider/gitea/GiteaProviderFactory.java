@@ -3,7 +3,6 @@ package com.company.gitea.provider.gitea;
 import com.company.gitea.api.ActionsApi;
 import com.company.gitea.api.GiteaApiClient;
 import com.company.gitea.model.ActionsConnection;
-import com.company.gitea.model.GiteaServer;
 import com.company.gitea.model.ProviderType;
 import com.company.gitea.provider.ActionsProvider;
 import com.company.gitea.provider.ActionsProviderFactory;
@@ -41,20 +40,5 @@ public final class GiteaProviderFactory implements ActionsProviderFactory {
                 connection.safeTimeoutSeconds()
         );
         return new GiteaActionsProvider(connection, new ActionsApi(client));
-    }
-
-    /**
-     * Temporary bridge until the settings model stores {@link ActionsConnection} directly.
-     */
-    public static @NotNull ActionsConnection toConnection(@NotNull GiteaServer server) {
-        return new ActionsConnection(
-                server.id(),
-                ProviderType.GITEA,
-                server.displayName(),
-                server.normalizedUrl(),
-                null,
-                server.safeTimeoutSeconds(),
-                server.repositories()
-        );
     }
 }

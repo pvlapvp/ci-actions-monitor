@@ -19,4 +19,9 @@ public enum ProviderType {
     public @NotNull String displayName() {
         return displayName;
     }
+
+    @Override
+    public @NotNull String toString() {
+        return displayName;
+    }
 }

@@ -1,6 +1,6 @@
 package com.company.gitea.ui;
 
-import com.company.gitea.model.GiteaServer;
+import com.company.gitea.model.ActionsConnection;
 import com.company.gitea.settings.GiteaSettings;
 import com.intellij.execution.services.ServiceViewContributor;
 import com.intellij.execution.services.ServiceViewDescriptor;
@@ -27,10 +27,10 @@ public final class GiteaServiceViewContributor implements ServiceViewContributor
 
     @Override
     public @NotNull List<GiteaServiceNode> getServices(@NotNull Project project) {
-        List<GiteaServer> servers = GiteaSettings.getInstance().getServers();
-        List<GiteaServiceNode> nodes = new ArrayList<>(servers.size());
-        for (GiteaServer server : servers) {
-            nodes.add(new GiteaServerNode(server));
+        List<ActionsConnection> connections = GiteaSettings.getInstance().getServers();
+        List<GiteaServiceNode> nodes = new ArrayList<>(connections.size());
+        for (ActionsConnection connection : connections) {
+            nodes.add(new GiteaServerNode(connection));
         }
         if (nodes.isEmpty()) {
             nodes.add(new GiteaMessageNode(

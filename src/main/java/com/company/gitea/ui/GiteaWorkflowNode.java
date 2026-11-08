@@ -1,6 +1,6 @@
 package com.company.gitea.ui;
 
-import com.company.gitea.model.GiteaServer;
+import com.company.gitea.model.ActionsConnection;
 import com.company.gitea.model.Repository;
 import com.company.gitea.model.Workflow;
 import com.company.gitea.model.WorkflowRun;
@@ -22,21 +22,21 @@ import java.util.List;
  */
 public final class GiteaWorkflowNode extends GiteaServiceNode implements ServiceViewLazyContributor {
 
-    private final GiteaServer server;
+    private final ActionsConnection connection;
     private final Repository repository;
     private final Workflow workflow;
 
-    public GiteaWorkflowNode(@NotNull GiteaServer server,
+    public GiteaWorkflowNode(@NotNull ActionsConnection connection,
                              @NotNull Repository repository,
                              @NotNull Workflow workflow) {
-        super("workflow:" + server.id() + ":" + repository.displayName() + ":" + workflow.id());
-        this.server = server;
+        super("workflow:" + connection.id() + ":" + repository.displayName() + ":" + workflow.id());
+        this.connection = connection;
         this.repository = repository;
         this.workflow = workflow;
     }
 
-    public @NotNull GiteaServer server() {
-        return server;
+    public @NotNull ActionsConnection connection() {
+        return connection;
     }
 
     public @NotNull Repository repository() {
@@ -52,11 +52,11 @@ public final class GiteaWorkflowNode extends GiteaServiceNode implements Service
         GiteaTreeStateService stateService = project.getService(GiteaTreeStateService.class);
         int loadedPages = stateService.getPageCount(id());
         ActionsMonitorService.RunList runList = project.getService(ActionsMonitorService.class)
-                .loadRuns(server, repository, workflow, loadedPages);
+                .loadRuns(connection, repository, workflow, loadedPages);
 
         List<GiteaServiceNode> children = new ArrayList<>(runList.runs().size() + 1);
         for (WorkflowRun run : runList.runs()) {
-            children.add(new GiteaRunNode(server, repository, workflow, run));
+            children.add(new GiteaRunNode(connection, repository, workflow, run));
         }
         if (runList.totalCount() > runList.runs().size()) {
             children.add(new GiteaLoadMoreNode(
@@ -94,7 +94,7 @@ public final class GiteaWorkflowNode extends GiteaServiceNode implements Service
     public @NotNull List<AnAction> createToolbarActions(@NotNull Project project) {
         List<AnAction> actions = new ArrayList<>();
         actions.add(GiteaActions.refresh(project, this));
-        AnAction open = GiteaActions.openUrlOrNull(workflow.webUrl(server, repository));
+        AnAction open = GiteaActions.openUrlOrNull(workflow.webUrl(connection, repository));
         if (open != null) {
             actions.add(open);
         }
@@ -104,6 +104,6 @@ public final class GiteaWorkflowNode extends GiteaServiceNode implements Service
 
     @Override
     public String browserUrl() {
-        return workflow.webUrl(server, repository);
+        return workflow.webUrl(connection, repository);
     }
 }

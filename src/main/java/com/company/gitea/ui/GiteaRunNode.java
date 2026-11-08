@@ -1,6 +1,6 @@
 package com.company.gitea.ui;
 
-import com.company.gitea.model.GiteaServer;
+import com.company.gitea.model.ActionsConnection;
 import com.company.gitea.model.GiteaStatus;
 import com.company.gitea.model.Repository;
 import com.company.gitea.model.Workflow;
@@ -30,24 +30,24 @@ import java.util.List;
  */
 public final class GiteaRunNode extends GiteaServiceNode implements ServiceViewLazyContributor {
 
-    private final GiteaServer server;
+    private final ActionsConnection connection;
     private final Repository repository;
     private final Workflow workflow;
     private final WorkflowRun run;
 
-    public GiteaRunNode(@NotNull GiteaServer server,
+    public GiteaRunNode(@NotNull ActionsConnection connection,
                         @NotNull Repository repository,
                         @NotNull Workflow workflow,
                         @NotNull WorkflowRun run) {
-        super("run:" + server.id() + ":" + repository.displayName() + ":" + run.id());
-        this.server = server;
+        super("run:" + connection.id() + ":" + repository.displayName() + ":" + run.id());
+        this.connection = connection;
         this.repository = repository;
         this.workflow = workflow;
         this.run = run;
     }
 
-    public @NotNull GiteaServer server() {
-        return server;
+    public @NotNull ActionsConnection connection() {
+        return connection;
     }
 
     public @NotNull Repository repository() {
@@ -67,11 +67,11 @@ public final class GiteaRunNode extends GiteaServiceNode implements ServiceViewL
         GiteaTreeStateService stateService = project.getService(GiteaTreeStateService.class);
         int loadedPages = stateService.getPageCount(id());
         ActionsMonitorService.JobList jobList = project.getService(ActionsMonitorService.class)
-                .loadJobs(server, repository, run, loadedPages);
+                .loadJobs(connection, repository, run, loadedPages);
 
         List<GiteaServiceNode> children = new ArrayList<>(jobList.jobs().size() + 1);
         for (WorkflowJob job : jobList.jobs()) {
-            children.add(new GiteaJobNode(server, repository, job));
+            children.add(new GiteaJobNode(connection, repository, job));
         }
         if (jobList.totalCount() > jobList.jobs().size()) {
             children.add(new GiteaLoadMoreNode(
@@ -106,7 +106,7 @@ public final class GiteaRunNode extends GiteaServiceNode implements ServiceViewL
     @Override
     public @Nullable JComponent createContentComponent(@NotNull Project project) {
         StringBuilder text = new StringBuilder();
-        text.append("Server:      ").append(server.displayName()).append('\n');
+        text.append("Server:      ").append(connection.displayName()).append('\n');
         text.append("Repository:  ").append(repository.displayName()).append('\n');
         text.append("Workflow:    ").append(workflow.displayName()).append('\n');
         text.append("Run:         ").append(run.displayName()).append('\n');

@@ -1,6 +1,6 @@
 package com.company.gitea.service;
 
-import com.company.gitea.model.GiteaServer;
+import com.company.gitea.model.ActionsConnection;
 import com.company.gitea.model.Repository;
 import com.company.gitea.model.Workflow;
 import com.company.gitea.model.WorkflowJob;
@@ -41,18 +41,18 @@ public final class ActionsMonitorService {
         return project;
     }
 
-    public @NotNull List<Repository> loadRepositories(@NotNull GiteaServer server) throws IOException {
+    public @NotNull List<Repository> loadRepositories(@NotNull ActionsConnection connection) throws IOException {
         checkCancelled();
-        if (!server.repositories().isEmpty()) {
-            List<Repository> result = new ArrayList<>(server.repositories().size());
-            for (String fullName : server.repositories()) {
+        if (!connection.repositories().isEmpty()) {
+            List<Repository> result = new ArrayList<>(connection.repositories().size());
+            for (String fullName : connection.repositories()) {
                 result.add(Repository.fromFullName(fullName));
             }
             return result;
         }
 
         // No explicit list: show repositories accessible to the token, with pagination.
-        ActionsProvider provider = provider(server);
+        ActionsProvider provider = provider(connection);
         List<Repository> result = new ArrayList<>();
         for (int page = 1; page <= MAX_REPOSITORY_PAGES; page++) {
             checkCancelled();
@@ -65,10 +65,10 @@ public final class ActionsMonitorService {
         return result;
     }
 
-    public @NotNull List<Workflow> loadWorkflows(@NotNull GiteaServer server,
+    public @NotNull List<Workflow> loadWorkflows(@NotNull ActionsConnection connection,
                                                  @NotNull Repository repository) throws IOException {
         checkCancelled();
-        ActionsProvider provider = provider(server);
+        ActionsProvider provider = provider(connection);
         // GET /repos/{owner}/{repo} validates the repository and gives a fresh metadata object.
         Repository actual = provider.getRepository(repository.displayName());
         List<Workflow> result = new ArrayList<>();
@@ -83,7 +83,7 @@ public final class ActionsMonitorService {
         return result;
     }
 
-    public @NotNull RunList loadRuns(@NotNull GiteaServer server,
+    public @NotNull RunList loadRuns(@NotNull ActionsConnection connection,
                                      @NotNull Repository repository,
                                      @NotNull Workflow workflow,
                                      int loadedPages) throws IOException {
@@ -93,7 +93,7 @@ public final class ActionsMonitorService {
             throw new IOException("Workflow \"" + workflow.displayName() + "\" has no id");
         }
 
-        ActionsProvider provider = provider(server);
+        ActionsProvider provider = provider(connection);
         List<WorkflowRun> runs = new ArrayList<>();
         int totalCount = 0;
         int pages = Math.max(1, loadedPages);
@@ -109,12 +109,12 @@ public final class ActionsMonitorService {
         return new RunList(runs, totalCount);
     }
 
-    public @NotNull JobList loadJobs(@NotNull GiteaServer server,
+    public @NotNull JobList loadJobs(@NotNull ActionsConnection connection,
                                      @NotNull Repository repository,
                                      @NotNull WorkflowRun run,
                                      int loadedPages) throws IOException {
         checkCancelled();
-        ActionsProvider provider = provider(server);
+        ActionsProvider provider = provider(connection);
         List<WorkflowJob> jobs = new ArrayList<>();
         int totalCount = 0;
         int pages = Math.max(1, loadedPages);
@@ -130,30 +130,30 @@ public final class ActionsMonitorService {
         return new JobList(jobs, totalCount);
     }
 
-    public @NotNull WorkflowRun loadRun(@NotNull GiteaServer server,
+    public @NotNull WorkflowRun loadRun(@NotNull ActionsConnection connection,
                                         @NotNull Repository repository,
                                         long runId) throws IOException {
         checkCancelled();
-        return provider(server).getWorkflowRun(repository, runId);
+        return provider(connection).getWorkflowRun(repository, runId);
     }
 
-    public @NotNull WorkflowJob loadJob(@NotNull GiteaServer server,
+    public @NotNull WorkflowJob loadJob(@NotNull ActionsConnection connection,
                                         @NotNull Repository repository,
                                         long jobId) throws IOException {
         checkCancelled();
-        return provider(server).getJob(repository, jobId);
+        return provider(connection).getJob(repository, jobId);
     }
 
-    public @NotNull String loadJobLogs(@NotNull GiteaServer server,
+    public @NotNull String loadJobLogs(@NotNull ActionsConnection connection,
                                        @NotNull Repository repository,
                                        long jobId) throws IOException {
         checkCancelled();
-        return provider(server).getJobLogs(repository, jobId);
+        return provider(connection).getJobLogs(repository, jobId);
     }
 
-    private @NotNull ActionsProvider provider(@NotNull GiteaServer server) throws IOException {
+    private @NotNull ActionsProvider provider(@NotNull ActionsConnection connection) throws IOException {
         checkCancelled();
-        return GiteaConnectionService.getInstance().getProvider(server);
+        return GiteaConnectionService.getInstance().getProvider(connection);
     }
 
     private void checkCancelled() {

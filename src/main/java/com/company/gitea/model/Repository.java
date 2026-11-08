@@ -50,11 +50,11 @@ public record Repository(
         return slash > 0 ? full.substring(0, slash) : "";
     }
 
-    public @Nullable String webUrl(@NotNull GiteaServer server) {
+    public @Nullable String webUrl(@NotNull ActionsConnection connection) {
         if (htmlUrl != null && !htmlUrl.isBlank()) {
             return htmlUrl;
         }
-        String base = server.normalizedUrl();
-        return base.isBlank() ? null : base + "/" + displayName();
+        String base = connection.serverUrl();
+        return base == null || base.isBlank() ? null : base + "/" + displayName();
     }
 }
