@@ -1,4 +1,4 @@
-# Gitea / GitHub Actions Monitor
+# CI Actions Monitor
 
 Плагин для IntelliJ IDEA, который показывает CI/CD-запуски Gitea Actions и GitHub Actions
 в стандартном окне **Services**: подключения, репозитории, workflows, запуски, job'ы и их логи.
@@ -53,7 +53,7 @@ Linux/macOS:
 Готовый ZIP плагина:
 
 ```text
-build/distributions/gitea-actions-monitor-1.0.0.zip
+build/distributions/ci-actions-monitor-1.1.0.zip
 ```
 
 Установка ZIP: `Settings | Plugins | ⚙ | Install Plugin from Disk...`.
@@ -86,7 +86,7 @@ gradlew.bat runIde
 ```
 
 `runIde` использует sandbox в `.intellijPlatform/sandbox/`; лог IDE находится в
-`.intellijPlatform/sandbox/gitea-actions-monitor/IU-2026.3/log_runIde/idea.log`.
+`.intellijPlatform/sandbox/ci-actions-monitor/IU-2026.3/log_runIde/idea.log`.
 
 Проверки плагина:
 
@@ -103,8 +103,8 @@ gradlew.bat runIde
    Нужны scopes `read:repository` и `read:user`.
    Для GitHub создайте classic PAT или fine-grained PAT с permissions
    **Actions: Read-only**, **Metadata: Read-only**, **Contents: No access**.
-2. В IDEA откройте `Settings | Tools | Gitea Actions Monitor`
-   (или `Tools | Gitea Actions Monitor Settings...`).
+2. В IDEA откройте `Settings | Tools | CI Actions Monitor`
+   (или `Tools | CI Actions Monitor Settings...`).
 3. Нажмите **Add...** и заполните:
    - **Provider** — `Gitea` или `GitHub`;
    - **Name** — произвольное имя подключения;
@@ -215,7 +215,7 @@ HTTP 404 для логов означает, что job ещё не старто
 - `./gradlew verifyPluginStructure` — успешно.
 - `./gradlew verifyPlugin` — `Compatible` против `IU-263.7307.200`.
 - `./gradlew runIde` — отдельный экземпляр IntelliJ IDEA запускается,
-  в `idea.log` плагин загружается как `Gitea Actions Monitor (1.0.0)`.
+  в `idea.log` плагин загружается как `CI Actions Monitor (1.1.0)`.
 - Java bytecode: major version 69 (Java 25).
 - Разбор реальных схем Gitea 1.27.3 (`Workflow`, `WorkflowRun`, `WorkflowJob`,
   `WorkflowStep`) на тестовых JSON.
@@ -230,7 +230,7 @@ HTTP 404 для логов означает, что job ещё не старто
   - раскрытие узла сервера через `ServiceViewManager.expand(...)` завершается успешно;
   - PasswordSafe: запись, чтение и удаление токена работают;
   - миграция старого XML: сервер создаётся, токен переносится в PasswordSafe,
-    `State.token` пуст, в итоговом `gitea-actions-monitor.xml` токена нет.
+    `State.token` пуст, в итоговом `ci-actions-monitor.xml` токена нет.
 - End-to-end в запущенной IDEA с mock-сервером, совместимым с Gitea 1.27.3:
   - цепочка `Server → Repository → Workflow → Run → Job` загружается через реальные
     node-классы плагина;
@@ -270,15 +270,15 @@ HTTP 404 для логов означает, что job ещё не старто
 ## Структура
 
 ```
-src/main/java/com/company/gitea/
+src/main/java/ru/pvlapvp/ciactionsmonitor/
 ├── api/
 │   ├── GiteaApiClient.java
 │   ├── GiteaApiException.java
-│   └── ActionsApi.java
+│   └── GiteaActionsApi.java
 ├── model/
 │   ├── ActionsConnection.java
 │   ├── ProviderType.java
-│   ├── GiteaStatus.java
+│   ├── ActionsStatus.java
 │   ├── Repository.java
 │   ├── Workflow.java
 │   ├── WorkflowRun.java
@@ -311,33 +311,33 @@ src/main/java/com/company/gitea/
 │       ├── GitHubDtoMapper.java
 │       └── dto/
 ├── service/
-│   ├── GiteaConnectionService.java
-│   ├── GiteaCredentialService.java
-│   ├── GiteaAutoRefreshService.java
-│   ├── GiteaTreeStateService.java
+│   ├── ConnectionService.java
+│   ├── CredentialService.java
+│   ├── AutoRefreshService.java
+│   ├── TreeStateService.java
 │   ├── ActionsMonitorService.java
 │   └── LogsService.java
 ├── ui/
-│   ├── GiteaServiceViewContributor.java
-│   ├── GiteaServiceNode.java
-│   ├── GiteaServerNode.java
-│   ├── GiteaRepositoryNode.java
-│   ├── GiteaWorkflowNode.java
-│   ├── GiteaRunNode.java
-│   ├── GiteaJobNode.java
-│   ├── GiteaErrorNode.java
-│   ├── GiteaMessageNode.java
-│   ├── GiteaLoadMoreNode.java
-│   ├── GiteaNodeDescriptor.java
-│   ├── GiteaServiceEvents.java
-│   ├── GiteaActions.java
-│   ├── GiteaUi.java
+│   ├── ActionsServiceViewContributor.java
+│   ├── ActionsServiceNode.java
+│   ├── ConnectionNode.java
+│   ├── RepositoryNode.java
+│   ├── WorkflowNode.java
+│   ├── RunNode.java
+│   ├── JobNode.java
+│   ├── ErrorNode.java
+│   ├── MessageNode.java
+│   ├── LoadMoreNode.java
+│   ├── ActionsNodeDescriptor.java
+│   ├── ActionsServiceEvents.java
+│   ├── ActionsToolbar.java
+│   ├── ActionsUi.java
 │   └── LogsPanel.java
 └── settings/
-    ├── GiteaSettings.java
-    ├── GiteaSettingsConfigurable.java
-    ├── GiteaServerDialog.java
-    └── GiteaOpenSettingsAction.java
+    ├── ActionsSettings.java
+    ├── ActionsSettingsConfigurable.java
+    ├── ConnectionDialog.java
+    └── OpenSettingsAction.java
 
 src/main/resources/META-INF/plugin.xml
 

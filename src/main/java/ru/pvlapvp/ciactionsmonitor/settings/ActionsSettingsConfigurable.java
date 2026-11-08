@@ -1,0 +1,277 @@
+package ru.pvlapvp.ciactionsmonitor.settings;
+
+import ru.pvlapvp.ciactionsmonitor.model.ActionsConnection;
+import ru.pvlapvp.ciactionsmonitor.service.AutoRefreshService;
+import ru.pvlapvp.ciactionsmonitor.service.ConnectionService;
+import ru.pvlapvp.ciactionsmonitor.service.CredentialService;
+import ru.pvlapvp.ciactionsmonitor.service.TreeStateService;
+import ru.pvlapvp.ciactionsmonitor.ui.ActionsServiceEvents;
+import com.intellij.openapi.options.SearchableConfigurable;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectManager;
+import com.intellij.openapi.ui.Messages;
+import com.intellij.ui.JBColor;
+import com.intellij.ui.components.JBLabel;
+import com.intellij.ui.components.JBScrollPane;
+import com.intellij.ui.table.JBTable;
+import com.intellij.util.ui.FormBuilder;
+import com.intellij.util.ui.JBUI;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JComponent;
+import javax.swing.JPanel;
+import javax.swing.ListSelectionModel;
+import javax.swing.table.DefaultTableModel;
+import java.awt.BorderLayout;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Settings page for connection/repository configuration.
+ * <p>
+ * Tokens are never shown. New tokens are written to PasswordSafe asynchronously
+ * when the settings are applied.
+ */
+public final class ActionsSettingsConfigurable implements SearchableConfigurable {
+
+    private final List<ActionsConnection> workingConnections = new ArrayList<>();
+    private final Map<String, String> pendingTokens = new HashMap<>();
+    private final Set<String> removedServerIds = new HashSet<>();
+
+    private JBTable table;
+    private DefaultTableModel tableModel;
+    private JButton editButton;
+    private JButton removeButton;
+    private JPanel panel;
+
+    @Override
+    public @NotNull String getId() {
+        return "ru.pvlapvp.ciactionsmonitor.settings";
+    }
+
+    @Override
+    public @NotNull String getDisplayName() {
+        return "CI Actions Monitor";
+    }
+
+    @Override
+    public @Nullable JComponent createComponent() {
+        tableModel = new DefaultTableModel(new Object[]{"Name", "Provider", "Server URL", "Repositories"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+        table = new JBTable(tableModel);
+        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        table.setFillsViewportHeight(true);
+        table.getSelectionModel().addListSelectionListener(event -> updateButtons());
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent event) {
+                if (event.getClickCount() == 2 && table.getSelectedRow() >= 0) {
+                    editSelectedServer();
+                }
+            }
+        });
+
+        JButton addButton = new JButton("Add...");
+        addButton.addActionListener(event -> addConnection());
+        editButton = new JButton("Edit...");
+        editButton.addActionListener(event -> editSelectedServer());
+        removeButton = new JButton("Remove");
+        removeButton.addActionListener(event -> removeSelectedServer());
+
+        JPanel buttons = new JPanel();
+        buttons.setLayout(new BoxLayout(buttons, BoxLayout.X_AXIS));
+        buttons.add(addButton);
+        buttons.add(Box.createHorizontalStrut(6));
+        buttons.add(editButton);
+        buttons.add(Box.createHorizontalStrut(6));
+        buttons.add(removeButton);
+        buttons.add(Box.createHorizontalGlue());
+
+        JPanel serversPanel = new JPanel(new BorderLayout(0, 6));
+        serversPanel.add(new JBScrollPane(table), BorderLayout.CENTER);
+        serversPanel.add(buttons, BorderLayout.SOUTH);
+
+        JBLabel tokenNote = new JBLabel(
+                "<html>Access tokens are stored in IntelliJ <b>PasswordSafe</b>, not in the plugin XML. "
+                        + "A token is bound to a connection and removed when the connection is deleted.</html>"
+        );
+        tokenNote.setForeground(JBColor.GRAY);
+
+        panel = FormBuilder.createFormBuilder()
+                .addComponent(tokenNote)
+                .addComponentFillVertically(serversPanel, 12)
+                .getPanel();
+        panel.setBorder(JBUI.Borders.empty(12));
+
+        reset();
+        return panel;
+    }
+
+    @Override
+    public boolean isModified() {
+        if (tableModel == null) {
+            return false;
+        }
+        return !workingConnections.equals(ActionsSettings.getInstance().getConnections())
+                || !pendingTokens.isEmpty()
+                || !removedServerIds.isEmpty();
+    }
+
+    @Override
+    public void apply() {
+        ActionsSettings settings = ActionsSettings.getInstance();
+        CredentialService credentials = CredentialService.getInstance();
+        ConnectionService connections = ConnectionService.getInstance();
+
+        settings.setConnections(workingConnections);
+
+        for (String connectionId : removedServerIds) {
+            credentials.deleteToken(connectionId);
+            connections.invalidate(connectionId);
+        }
+        for (Map.Entry<String, String> entry : pendingTokens.entrySet()) {
+            credentials.setToken(entry.getKey(), entry.getValue());
+            connections.invalidate(entry.getKey());
+        }
+        connections.invalidateAll();
+
+        for (Project project : ProjectManager.getInstance().getOpenProjects()) {
+            project.getService(TreeStateService.class).resetAll();
+            project.getService(AutoRefreshService.class).clear();
+        }
+        ActionsServiceEvents.fireResetAll();
+        ActionsSettings.saveNow();
+
+        pendingTokens.clear();
+        removedServerIds.clear();
+    }
+
+    @Override
+    public void reset() {
+        workingConnections.clear();
+        workingConnections.addAll(ActionsSettings.getInstance().getConnections());
+        pendingTokens.clear();
+        removedServerIds.clear();
+        fillTable();
+    }
+
+    @Override
+    public void disposeUIResources() {
+        panel = null;
+        table = null;
+        tableModel = null;
+        editButton = null;
+        removeButton = null;
+        workingConnections.clear();
+        pendingTokens.clear();
+        removedServerIds.clear();
+    }
+
+    private void fillTable() {
+        if (tableModel == null) {
+            return;
+        }
+        tableModel.setRowCount(0);
+        for (ActionsConnection connection : workingConnections) {
+            tableModel.addRow(new Object[]{
+                    connection.displayName(),
+                    connection.providerType().displayName(),
+                    connection.serverUrl(),
+                    repositoriesText(connection)
+            });
+        }
+        updateButtons();
+    }
+
+    private void updateButtons() {
+        if (editButton == null || removeButton == null || table == null) {
+            return;
+        }
+        boolean selected = table.getSelectedRow() >= 0 && table.getSelectedRow() < workingConnections.size();
+        editButton.setEnabled(selected);
+        removeButton.setEnabled(selected);
+    }
+
+    private void addConnection() {
+        ConnectionDialog dialog = new ConnectionDialog(panel, null);
+        if (!dialog.showAndGet()) {
+            return;
+        }
+        ActionsConnection connection = dialog.getConnection();
+        workingConnections.add(connection);
+        pendingTokens.put(connection.id(), dialog.getToken());
+        fillTable();
+        selectServer(connection.id());
+    }
+
+    private void editSelectedServer() {
+        int row = table.getSelectedRow();
+        if (row < 0 || row >= workingConnections.size()) {
+            return;
+        }
+        ActionsConnection existing = workingConnections.get(row);
+        ConnectionDialog dialog = new ConnectionDialog(panel, existing);
+        if (!dialog.showAndGet()) {
+            return;
+        }
+        ActionsConnection updated = dialog.getConnection();
+        workingConnections.set(row, updated);
+        String token = dialog.getToken();
+        if (!token.isBlank()) {
+            pendingTokens.put(updated.id(), token);
+        }
+        fillTable();
+        selectServer(updated.id());
+    }
+
+    private void removeSelectedServer() {
+        int row = table.getSelectedRow();
+        if (row < 0 || row >= workingConnections.size()) {
+            return;
+        }
+        ActionsConnection connection = workingConnections.get(row);
+        int answer = Messages.showYesNoDialog(
+                panel,
+                "Remove connection \"" + connection.displayName() + "\" and its stored token?",
+                "Remove Connection",
+                Messages.getQuestionIcon()
+        );
+        if (answer != Messages.YES) {
+            return;
+        }
+        workingConnections.remove(row);
+        pendingTokens.remove(connection.id());
+        removedServerIds.add(connection.id());
+        fillTable();
+    }
+
+    private void selectServer(@NotNull String connectionId) {
+        for (int row = 0; row < workingConnections.size(); row++) {
+            if (workingConnections.get(row).id().equals(connectionId)) {
+                table.setRowSelectionInterval(row, row);
+                return;
+            }
+        }
+    }
+
+    private static @NotNull String repositoriesText(@NotNull ActionsConnection connection) {
+        if (connection.repositories().isEmpty()) {
+            return "All accessible";
+        }
+        return String.join(", ", connection.repositories());
+    }
+}

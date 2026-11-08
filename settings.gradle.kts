@@ -1,1 +1,1 @@
-rootProject.name = "gitea-actions-monitor"
+rootProject.name = "ci-actions-monitor"
