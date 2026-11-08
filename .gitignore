@@ -1,7 +1,10 @@
-target/
-!.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
+.gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+.intellijPlatform/
+.modules.storage
+out/
 .kotlin
 
 ### IntelliJ IDEA ###
@@ -28,9 +31,6 @@ target/
 /dist/
 /nbdist/
 /.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
 
 ### VS Code ###
 .vscode/

@@ -28,46 +28,69 @@
 
 ## Сборка
 
-```bash
-mvn package
+Проект собирается Gradle Wrapper'ом; устанавливать Gradle вручную не нужно.
+Windows:
+
+```bat
+gradlew.bat clean
+gradlew.bat build
+gradlew.bat buildPlugin
 ```
 
-Готовый плагин: `target/gitea-actions-monitor.jar`.
+Linux/macOS:
 
-### Как устроена Maven-сборка
+```bash
+./gradlew clean
+./gradlew build
+./gradlew buildPlugin
+```
 
-JetBrains не поддерживает Maven как официальную систему сборки плагинов и не
-публикует IntelliJ Platform в виде обычного набора Maven-зависимостей. Поэтому
-проект использует следующий подход:
+Готовый ZIP плагина:
 
-1. `maven-dependency-plugin` скачивает `com.jetbrains.intellij.idea:ideaIC:2026.3`
-   (ZIP, около 600 МБ) из репозитория JetBrains.
-2. ZIP распаковывается в `target/idea`.
-3. `maven-antrun-plugin` компилирует исходники Ant-задачей `javac` против
-   `target/idea/lib/*.jar`.
-4. `maven-jar-plugin` собирает обычный plugin JAR.
-5. Перед компиляцией `target/classes` очищается, чтобы удалённые классы не попадали
-   в JAR при инкрементальной сборке.
+```text
+build/distributions/gitea-actions-monitor-1.0.0.zip
+```
 
-Ограничения:
+Установка ZIP: `Settings | Plugins | ⚙ | Install Plugin from Disk...`.
 
-- первый запуск требует скачивания ZIP IntelliJ Platform;
-- `mvn` должен работать на JDK 25;
-- официальная поддержка Maven отсутствует; для публикации плагина JetBrains
-  рекомендует Gradle;
-- для code insight в IDE проект нужно открыть с IntelliJ Platform Plugin SDK
-  (см. ниже).
+### Версии сборки
+
+- Gradle Wrapper: **9.8.1** (зафиксирован в `gradle/wrapper/gradle-wrapper.properties`).
+- IntelliJ Platform Gradle Plugin: **2.20.0**.
+- Целевая платформа: **IntelliJ IDEA 2026.3** (`intellijIdea("2026.3")`).
+- Java Toolchain: **25**.
+- Java bytecode: **25** (class file major version 69), совместим с JBR 25,
+  на котором работает IntelliJ IDEA 2026.3.
+
+Gradle-сборка сама скачивает IntelliJ Platform, компилирует Java, обрабатывает
+ресурсы, патчит `plugin.xml` и упаковывает плагин. Ручная распаковка IDEA ZIP
+и Ant javac больше не используются.
 
 ## Запуск и отладка в IDE
 
-1. `File | Project Structure | SDKs | + | IntelliJ Platform Plugin SDK`.
-2. Укажите установленную IntelliJ IDEA 2026.3 или каталог `target/idea`
-   после `mvn generate-resources`.
-3. Назначьте этот SDK проекту.
-4. `Run | Edit Configurations | + | Plugin` и запустите конфигурацию.
+Запуск отдельного экземпляра IntelliJ IDEA с установленным плагином:
 
-Альтернатива: установить `target/gitea-actions-monitor.jar` через
-`Settings | Plugins | ⚙ | Install Plugin from Disk...`.
+```bash
+./gradlew runIde
+```
+
+Windows:
+
+```bat
+gradlew.bat runIde
+```
+
+`runIde` использует sandbox в `.intellijPlatform/sandbox/`; лог IDE находится в
+`.intellijPlatform/sandbox/gitea-actions-monitor/IU-2026.3/log_runIde/idea.log`.
+
+Проверки плагина:
+
+```bash
+./gradlew verifyPluginStructure
+./gradlew verifyPlugin
+```
+
+`verifyPlugin` проверяет совместимость с IntelliJ IDEA 2026.3 через Plugin Verifier.
 
 ## Первичная настройка Gitea
 
@@ -152,8 +175,14 @@ HTTP 404 для логов означает, что job ещё не старто
 
 **Проверено:**
 
-- `mvn clean package` — успешная сборка.
-- Plugin Verifier 1.410 против `IU-263.7307.200` — `Compatible`.
+- `./gradlew clean` — успешно.
+- `./gradlew build` — успешно.
+- `./gradlew buildPlugin` — успешно; ZIP создан в `build/distributions/`.
+- `./gradlew verifyPluginStructure` — успешно.
+- `./gradlew verifyPlugin` — `Compatible` против `IU-263.7307.200`.
+- `./gradlew runIde` — отдельный экземпляр IntelliJ IDEA запускается,
+  в `idea.log` плагин загружается как `Gitea Actions Monitor (1.0.0)`.
+- Java bytecode: major version 69 (Java 25).
 - Разбор реальных схем Gitea 1.27.3 (`Workflow`, `WorkflowRun`, `WorkflowJob`,
   `WorkflowStep`) на тестовых JSON.
 - Маппинг статусов, включая `completed` без conclusion и неизвестные значения.
@@ -193,7 +222,9 @@ HTTP 404 для логов означает, что job ещё не старто
 - Автообновление работает только для уже раскрытых workflow/run.
 - Если список репозиториев не задан, загружается до 300 доступных репозиториев
   (10 страниц по 30); для больших инсталляций лучше задать список явно.
-- Maven-сборка неофициальная; для публикации плагина рекомендуется Gradle.
+- `runIde` использует IntelliJ IDEA Ultimate 2026.3, поэтому для интерактивной
+  работы может потребоваться соответствующая лицензия; сборка и `verifyPlugin`
+  от лицензии не зависят.
 
 ## Структура
 
@@ -240,4 +271,12 @@ src/main/java/com/company/gitea/
     └── GiteaOpenSettingsAction.java
 
 src/main/resources/META-INF/plugin.xml
+
+build.gradle.kts
+settings.gradle.kts
+gradle.properties
+gradle/wrapper/gradle-wrapper.jar
+gradle/wrapper/gradle-wrapper.properties
+gradlew
+gradlew.bat
 ```
