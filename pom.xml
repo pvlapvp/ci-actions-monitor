@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>ru.pvlapvp</groupId>
+    <artifactId>gitea-actions-monitor</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>Gitea Actions Monitor</name>
+    <description>IntelliJ IDEA plugin for monitoring Gitea Actions</description>
+
+    <properties>
+        <!-- IntelliJ Platform version used for compilation. The ideaIC ZIP is downloaded
+             from the JetBrains Maven repository on the first build. -->
+        <idea.version>2026.3</idea.version>
+        <maven.compiler.release>25</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.test.skip>true</maven.test.skip>
+    </properties>
+
+    <repositories>
+        <repository>
+            <id>intellij-releases</id>
+            <url>https://www.jetbrains.com/intellij-repository/releases</url>
+        </repository>
+        <repository>
+            <id>intellij-dependencies</id>
+            <url>https://packages.jetbrains.team/maven/p/ij/intellij-dependencies</url>
+        </repository>
+    </repositories>
+
+    <build>
+        <finalName>gitea-actions-monitor</finalName>
+        <plugins>
+            <!--
+                The IntelliJ Platform is distributed as a ZIP, not as a JAR, so the
+                standard maven-compiler-plugin cannot be used. The ZIP is unpacked into
+                target/idea and Ant's javac task compiles the sources against its lib/*.jar
+                files. This keeps `mvn package` self-contained.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.8.1</version>
+                <executions>
+                    <execution>
+                        <id>unpack-intellij-platform</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>unpack</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>com.jetbrains.intellij.idea</groupId>
+                                    <artifactId>ideaIC</artifactId>
+                                    <version>${idea.version}</version>
+                                    <type>zip</type>
+                                    <outputDirectory>${project.build.directory}/idea</outputDirectory>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <executions>
+                    <execution>
+                        <id>default-compile</id>
+                        <phase>none</phase>
+                    </execution>
+                    <execution>
+                        <id>default-testCompile</id>
+                        <phase>none</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <!-- Remove stale classes left by a previous incremental build. -->
+                    <execution>
+                        <id>clean-output</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <delete dir="${project.build.outputDirectory}"/>
+                            </target>
+                        </configuration>
+                    </execution>
+
+                    <execution>
+                        <id>compile-plugin</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <mkdir dir="${project.build.outputDirectory}"/>
+                                <javac srcdir="${project.basedir}/src/main/java"
+                                       destdir="${project.build.outputDirectory}"
+                                       release="${maven.compiler.release}"
+                                       encoding="${project.build.sourceEncoding}"
+                                       includeantruntime="false"
+                                       debug="true">
+                                    <classpath>
+                                        <fileset dir="${project.build.directory}/idea/lib" includes="*.jar"/>
+                                    </classpath>
+                                </javac>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+            </plugin>
+        </plugins>
+    </build>
+</project>

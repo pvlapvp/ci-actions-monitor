@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<idea-plugin>
+    <id>ru.pvlapvp.gitea-actions-monitor</id>
+    <name>Gitea Actions Monitor</name>
+    <version>1.0.0</version>
+    <vendor>pvlapvp</vendor>
+
+    <description><![CDATA[
+        Browse Gitea servers, repositories, workflows, runs and jobs in the standard
+        Services tool window. Read job logs and follow active runs without leaving the IDE.
+        Tokens are stored in IntelliJ PasswordSafe.
+    ]]></description>
+
+    <idea-version since-build="263"/>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationService serviceImplementation="com.company.gitea.settings.GiteaSettings"/>
+
+        <applicationConfigurable
+                id="com.company.gitea.settings"
+                displayName="Gitea Actions Monitor"
+                parentId="tools"
+                instance="com.company.gitea.settings.GiteaSettingsConfigurable"/>
+
+        <!--
+            Integrates into the standard Services tool window. Do not register a
+            separate com.intellij.toolWindow for this plugin.
+        -->
+        <serviceViewContributor
+                implementation="com.company.gitea.ui.GiteaServiceViewContributor"/>
+    </extensions>
+
+    <actions>
+        <action id="Gitea.OpenSettings"
+                class="com.company.gitea.settings.GiteaOpenSettingsAction"
+                text="Gitea Actions Monitor Settings..."
+                description="Configure Gitea servers, repositories and access tokens">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

@@ -1,0 +1,236 @@
+package com.company.gitea.api;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.io.IOException;
+import java.lang.reflect.Type;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+
+/**
+ * HTTP client for the Gitea 1.27 REST API.
+ * <p>
+ * The client is immutable and thread-safe. It never includes the token in exception
+ * messages or logs. Network calls are blocking and must be executed on a background thread.
+ */
+public final class GiteaApiClient {
+
+    private static final Gson GSON = new Gson();
+    private static final int MAX_ERROR_BODY = 400;
+
+    private final HttpClient httpClient;
+    private final String apiBaseUrl;
+    private final String token;
+    private final Duration requestTimeout;
+
+    public GiteaApiClient(@NotNull String serverUrl, @NotNull String token, int timeoutSeconds) {
+        String normalizedUrl = normalizeServerUrl(serverUrl);
+        if (normalizedUrl.isBlank()) {
+            throw new IllegalArgumentException("Gitea server URL is empty");
+        }
+
+        this.apiBaseUrl = normalizedUrl + "/api/v1";
+        this.token = token.trim();
+        this.requestTimeout = Duration.ofSeconds(Math.max(5, timeoutSeconds));
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(requestTimeout)
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build();
+        try {
+            URI.create(apiBaseUrl);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid Gitea server URL: " + normalizedUrl, e);
+        }
+    }
+
+    public @NotNull String getApiBaseUrl() {
+        return apiBaseUrl;
+    }
+
+    /**
+     * Performs a GET request and returns a JSON model.
+     */
+    public <T> T getJson(@NotNull String path, @NotNull Type type) throws IOException {
+        String body = execute(path, "application/json");
+        try {
+            return GSON.fromJson(body, type);
+        } catch (JsonSyntaxException | IllegalStateException e) {
+            throw new IOException("Cannot parse JSON response from Gitea for " + path, e);
+        }
+    }
+
+    public <T> T getJson(@NotNull String path, @NotNull Class<T> type) throws IOException {
+        return getJson(path, (Type) type);
+    }
+
+    public JsonObject getJsonObject(@NotNull String path) throws IOException {
+        String body = execute(path, "application/json");
+        try {
+            return JsonParser.parseString(body).getAsJsonObject();
+        } catch (RuntimeException e) {
+            throw new IOException("Cannot parse JSON response from Gitea for " + path, e);
+        }
+    }
+
+    /**
+     * Downloads a text resource, such as job logs ({@code text/plain}).
+     */
+    public String getText(@NotNull String path) throws IOException {
+        return execute(path, "text/plain, */*;q=0.8");
+    }
+
+    public @NotNull String getVersion() throws IOException {
+        JsonObject json = getJsonObject("/version");
+        return json.has("version") ? json.get("version").getAsString() : "unknown";
+    }
+
+    private String execute(@NotNull String path, @NotNull String accept) throws IOException {
+        checkInterrupted();
+
+        String normalizedPath = path.startsWith("/") ? path : "/" + path;
+        URI uri;
+        try {
+            uri = URI.create(apiBaseUrl + normalizedPath);
+        } catch (IllegalArgumentException e) {
+            throw new IOException("Invalid Gitea request URL: " + normalizedPath, e);
+        }
+
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
+                .timeout(requestTimeout)
+                .header("Accept", accept)
+                .GET();
+        if (!token.isBlank()) {
+            builder.header("Authorization", "token " + token);
+        }
+
+        try {
+            HttpResponse<String> response = httpClient.send(
+                    builder.build(),
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+            );
+            checkInterrupted();
+
+            int status = response.statusCode();
+            if (status >= 400) {
+                throw createApiException(status, normalizedPath, response.body());
+            }
+            return response.body() == null ? "" : response.body();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Gitea request was cancelled", e);
+        } catch (HttpTimeoutException e) {
+            throw new IOException(
+                    "Gitea request timed out after " + requestTimeout.toSeconds() + " seconds: " + normalizedPath,
+                    e
+            );
+        }
+    }
+
+    private static void checkInterrupted() throws IOException {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new IOException("Gitea request was cancelled");
+        }
+    }
+
+    private static @NotNull GiteaApiException createApiException(int status, String path, @Nullable String body) {
+        if (status == 401) {
+            return new GiteaApiException(
+                    status,
+                    GiteaApiException.Kind.AUTHENTICATION,
+                    "Authentication failed (HTTP 401). Check the access token in Settings | Tools | Gitea Actions Monitor."
+            );
+        }
+        if (status == 403) {
+            return new GiteaApiException(
+                    status,
+                    GiteaApiException.Kind.AUTHENTICATION,
+                    "Access denied (HTTP 403). The token may lack read:repository/read:user permissions."
+            );
+        }
+        if (status == 404) {
+            return new GiteaApiException(
+                    status,
+                    GiteaApiException.Kind.NOT_FOUND,
+                    "Not found (HTTP 404): " + path
+                            + ". The repository, workflow, run or job may not exist; job logs may not be available yet."
+            );
+        }
+
+        String detail = body == null ? "" : body.strip();
+        if (detail.length() > MAX_ERROR_BODY) {
+            detail = detail.substring(0, MAX_ERROR_BODY) + "...";
+        }
+        String message = "Gitea API request failed (HTTP " + status + "): " + path;
+        if (!detail.isEmpty()) {
+            message += " — " + detail;
+        }
+        return new GiteaApiException(status, GiteaApiException.Kind.OTHER, message);
+    }
+
+    /**
+     * Accepts URLs with or without a scheme and with an optional {@code /api/v1} suffix.
+     */
+    public static @NotNull String normalizeServerUrl(@NotNull String serverUrl) {
+        String url = serverUrl.trim();
+        if (url.isEmpty()) {
+            return "";
+        }
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            url = "https://" + url;
+        }
+        while (url.endsWith("/")) {
+            url = url.substring(0, url.length() - 1);
+        }
+        if (url.endsWith("/api/v1")) {
+            url = url.substring(0, url.length() - "/api/v1".length());
+        }
+        return url;
+    }
+
+    /**
+     * HTTP error returned by Gitea.
+     */
+    public static final class GiteaApiException extends IOException {
+
+        public enum Kind {
+            AUTHENTICATION,
+            NOT_FOUND,
+            OTHER
+        }
+
+        private final int statusCode;
+        private final Kind kind;
+
+        private GiteaApiException(int statusCode, @NotNull Kind kind, @NotNull String message) {
+            super(message);
+            this.statusCode = statusCode;
+            this.kind = kind;
+        }
+
+        public int getStatusCode() {
+            return statusCode;
+        }
+
+        public @NotNull Kind getKind() {
+            return kind;
+        }
+
+        public boolean isAuthenticationError() {
+            return kind == Kind.AUTHENTICATION;
+        }
+
+        public boolean isNotFound() {
+            return kind == Kind.NOT_FOUND;
+        }
+    }
+}
