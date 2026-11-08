@@ -1,35 +1,33 @@
 package com.company.gitea.model;
 
-import com.google.gson.annotations.SerializedName;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * A workflow run from {@code GET /repos/{owner}/{repo}/actions/runs/{run}}.
+ * A workflow run returned by a provider.
  * <p>
- * Fields follow Gitea 1.27's {@code ActionWorkflowRun} response. In particular,
- * the API does not return {@code name} or {@code workflow_id}; the workflow is known
- * from the tree node and {@link #path()} contains {@code workflow-file@ref}.
+ * Some fields are optional because providers expose slightly different subsets of
+ * the same GitHub-compatible schema.
  */
 public record WorkflowRun(
         long id,
         String url,
-        @SerializedName("previous_attempt_url") String previousAttemptUrl,
-        @SerializedName("html_url") String htmlUrl,
-        @SerializedName("display_title") String displayTitle,
+        String previousAttemptUrl,
+        String htmlUrl,
+        String displayTitle,
         String path,
         String event,
-        @SerializedName("run_attempt") int runAttempt,
-        @SerializedName("run_number") int runNumber,
-        @SerializedName("repository_id") long repositoryId,
-        @SerializedName("head_sha") String headSha,
-        @SerializedName("head_branch") String headBranch,
+        int runAttempt,
+        int runNumber,
+        long repositoryId,
+        String headSha,
+        String headBranch,
         String status,
         String conclusion,
-        @SerializedName("started_at") String startedAt,
-        @SerializedName("completed_at") String completedAt,
+        String startedAt,
+        String completedAt,
         Actor actor,
-        @SerializedName("trigger_actor") Actor triggerActor) {
+        Actor triggerActor) {
 
     public record Actor(String login) {
     }

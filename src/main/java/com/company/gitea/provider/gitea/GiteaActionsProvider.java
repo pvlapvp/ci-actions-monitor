@@ -11,6 +11,7 @@ import com.company.gitea.provider.ActionsProvider;
 import com.company.gitea.provider.ConnectionInfo;
 import com.company.gitea.provider.Page;
 import com.company.gitea.provider.ProviderCapabilities;
+import com.company.gitea.provider.gitea.dto.GiteaRepositoryDto;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -20,7 +21,7 @@ import java.util.List;
  * Gitea implementation backed by the existing {@link ActionsApi}.
  * <p>
  * No Gitea endpoint or request format is changed here: this class only adapts the
- * existing typed API to the provider-neutral contract.
+ * existing typed API to the provider-neutral contract and maps DTOs to canonical models.
  */
 public final class GiteaActionsProvider implements ActionsProvider {
 
@@ -29,10 +30,12 @@ public final class GiteaActionsProvider implements ActionsProvider {
 
     private final ActionsConnection connection;
     private final ActionsApi api;
+    private final GiteaDtoMapper mapper;
 
     public GiteaActionsProvider(@NotNull ActionsConnection connection, @NotNull ActionsApi api) {
         this.connection = connection;
         this.api = api;
+        this.mapper = new GiteaDtoMapper(connection);
     }
 
     @Override
@@ -53,13 +56,13 @@ public final class GiteaActionsProvider implements ActionsProvider {
     @Override
     public @NotNull Page<Repository> getRepositories(int page, int pageSize) throws IOException {
         int limit = clampPageSize(pageSize);
-        List<Repository> repositories = api.getRepositories(page, limit);
+        List<Repository> repositories = mapper.toRepositories(api.getRepositories(page, limit));
         return new Page<>(repositories, -1, repositories.size() >= limit);
     }
 
     @Override
     public @NotNull Repository getRepository(@NotNull String fullName) throws IOException {
-        return api.getRepository(fullName);
+        return mapper.toRepository(api.getRepository(fullName));
     }
 
     @Override
@@ -67,7 +70,8 @@ public final class GiteaActionsProvider implements ActionsProvider {
                                                 int page,
                                                 int pageSize) throws IOException {
         // Gitea returns all workflow definitions without pagination.
-        return Page.single(api.getWorkflows(repository));
+        List<Workflow> workflows = mapper.toWorkflows(api.getWorkflows(toDto(repository)), repository);
+        return Page.single(workflows);
     }
 
     @Override
@@ -76,14 +80,15 @@ public final class GiteaActionsProvider implements ActionsProvider {
                                                        int page,
                                                        int pageSize) throws IOException {
         int limit = clampPageSize(pageSize);
-        ActionsApi.RunPage runPage = api.getWorkflowRuns(repository, workflow.id(), page, limit);
-        return new Page<>(runPage.runs(), runPage.totalCount(), runPage.runs().size() >= limit);
+        ActionsApi.RunPage runPage = api.getWorkflowRuns(toDto(repository), workflow.id(), page, limit);
+        List<WorkflowRun> runs = mapper.toWorkflowRuns(runPage.runs());
+        return new Page<>(runs, runPage.totalCount(), runs.size() >= limit);
     }
 
     @Override
     public @NotNull WorkflowRun getWorkflowRun(@NotNull Repository repository,
                                                long runId) throws IOException {
-        return api.getWorkflowRun(repository, runId);
+        return mapper.toWorkflowRun(api.getWorkflowRun(toDto(repository), runId));
     }
 
     @Override
@@ -92,20 +97,21 @@ public final class GiteaActionsProvider implements ActionsProvider {
                                                   int page,
                                                   int pageSize) throws IOException {
         int limit = clampPageSize(pageSize);
-        ActionsApi.JobPage jobPage = api.getRunJobs(repository, runId, page, limit);
-        return new Page<>(jobPage.jobs(), jobPage.totalCount(), jobPage.jobs().size() >= limit);
+        ActionsApi.JobPage jobPage = api.getRunJobs(toDto(repository), runId, page, limit);
+        List<WorkflowJob> jobs = mapper.toWorkflowJobs(jobPage.jobs());
+        return new Page<>(jobs, jobPage.totalCount(), jobs.size() >= limit);
     }
 
     @Override
     public @NotNull WorkflowJob getJob(@NotNull Repository repository,
                                        long jobId) throws IOException {
-        return api.getJob(repository, jobId);
+        return mapper.toWorkflowJob(api.getJob(toDto(repository), jobId));
     }
 
     @Override
     public @NotNull String getJobLogs(@NotNull Repository repository,
                                       long jobId) throws IOException {
-        return api.getJobLogs(repository, jobId);
+        return api.getJobLogs(toDto(repository), jobId);
     }
 
     @Override
@@ -120,5 +126,21 @@ public final class GiteaActionsProvider implements ActionsProvider {
 
     private int clampPageSize(int pageSize) {
         return Math.max(1, Math.min(pageSize, capabilities().maxPageSize()));
+    }
+
+    private static @NotNull GiteaRepositoryDto toDto(@NotNull Repository repository) {
+        GiteaRepositoryDto dto = new GiteaRepositoryDto();
+        dto.id = repository.id();
+        dto.name = repository.name();
+        dto.fullName = repository.displayName();
+        dto.htmlUrl = repository.htmlUrl();
+        dto.defaultBranch = repository.defaultBranch();
+        dto.privateRepository = repository.privateRepository();
+        if (repository.owner() != null) {
+            GiteaRepositoryDto.Owner owner = new GiteaRepositoryDto.Owner();
+            owner.login = repository.owner().login();
+            dto.owner = owner;
+        }
+        return dto;
     }
 }

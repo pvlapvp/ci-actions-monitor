@@ -1,6 +1,5 @@
 package com.company.gitea.model;
 
-import com.google.gson.annotations.SerializedName;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -11,8 +10,8 @@ public record WorkflowStep(
         int number,
         String status,
         String conclusion,
-        @SerializedName("started_at") String startedAt,
-        @SerializedName("completed_at") String completedAt) {
+        String startedAt,
+        String completedAt) {
 
     public @NotNull String displayName() {
         String prefix = number > 0 ? number + ". " : "";

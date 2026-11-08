@@ -1,19 +1,18 @@
 package com.company.gitea.model;
 
-import com.google.gson.annotations.SerializedName;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * A Gitea repository as returned by {@code GET /repos/{owner}/{repo}}.
+ * A repository returned by a provider.
  */
 public record Repository(
         long id,
         String name,
-        @SerializedName("full_name") String fullName,
-        @SerializedName("html_url") String htmlUrl,
-        @SerializedName("default_branch") String defaultBranch,
-        @SerializedName("private") boolean privateRepository,
+        String fullName,
+        String htmlUrl,
+        String defaultBranch,
+        boolean privateRepository,
         Owner owner) {
 
     public record Owner(String login) {

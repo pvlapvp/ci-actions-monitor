@@ -94,7 +94,7 @@ public final class GiteaWorkflowNode extends GiteaServiceNode implements Service
     public @NotNull List<AnAction> createToolbarActions(@NotNull Project project) {
         List<AnAction> actions = new ArrayList<>();
         actions.add(GiteaActions.refresh(project, this));
-        AnAction open = GiteaActions.openUrlOrNull(workflow.webUrl(connection, repository));
+        AnAction open = GiteaActions.openUrlOrNull(workflow.htmlUrl());
         if (open != null) {
             actions.add(open);
         }
@@ -104,6 +104,6 @@ public final class GiteaWorkflowNode extends GiteaServiceNode implements Service
 
     @Override
     public String browserUrl() {
-        return workflow.webUrl(connection, repository);
+        return workflow.htmlUrl();
     }
 }

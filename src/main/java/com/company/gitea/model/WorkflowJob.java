@@ -1,34 +1,32 @@
 package com.company.gitea.model;
 
-import com.google.gson.annotations.SerializedName;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
 /**
- * A job from {@code GET /repos/{owner}/{repo}/actions/runs/{run}/jobs}
- * or {@code GET /repos/{owner}/{repo}/actions/jobs/{job_id}}.
+ * A workflow job returned by a provider.
  */
 public record WorkflowJob(
         long id,
         String url,
-        @SerializedName("html_url") String htmlUrl,
-        @SerializedName("run_id") long runId,
-        @SerializedName("run_url") String runUrl,
+        String htmlUrl,
+        long runId,
+        String runUrl,
         String name,
         List<String> labels,
-        @SerializedName("run_attempt") int runAttempt,
-        @SerializedName("head_sha") String headSha,
-        @SerializedName("head_branch") String headBranch,
+        int runAttempt,
+        String headSha,
+        String headBranch,
         String status,
         String conclusion,
-        @SerializedName("runner_id") long runnerId,
-        @SerializedName("runner_name") String runnerName,
+        long runnerId,
+        String runnerName,
         List<WorkflowStep> steps,
-        @SerializedName("created_at") String createdAt,
-        @SerializedName("started_at") String startedAt,
-        @SerializedName("completed_at") String completedAt) {
+        String createdAt,
+        String startedAt,
+        String completedAt) {
 
     public WorkflowJob {
         steps = steps == null ? List.of() : List.copyOf(steps);
