@@ -49,12 +49,10 @@ public interface ActionsProvider {
                                 long jobId) throws IOException;
 
     /**
-     * Returns the accumulated job log as text.
-     * <p>
-     * The streaming log contract will replace this method in a later stage.
+     * Opens the accumulated job log as a stream. The caller must close it.
      */
-    @NotNull String getJobLogs(@NotNull Repository repository,
-                               long jobId) throws IOException;
+    @NotNull JobLogStream openJobLogs(@NotNull Repository repository,
+                                      long jobId) throws IOException;
 
     @NotNull ConnectionInfo testConnection() throws IOException;
 }

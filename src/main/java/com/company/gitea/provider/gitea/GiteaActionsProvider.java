@@ -9,6 +9,8 @@ import com.company.gitea.model.WorkflowJob;
 import com.company.gitea.model.WorkflowRun;
 import com.company.gitea.provider.ActionsProvider;
 import com.company.gitea.provider.ConnectionInfo;
+import com.company.gitea.provider.InputStreamJobLogStream;
+import com.company.gitea.provider.JobLogStream;
 import com.company.gitea.provider.Page;
 import com.company.gitea.provider.ProviderCapabilities;
 import com.company.gitea.provider.gitea.dto.GiteaRepositoryDto;
@@ -109,9 +111,9 @@ public final class GiteaActionsProvider implements ActionsProvider {
     }
 
     @Override
-    public @NotNull String getJobLogs(@NotNull Repository repository,
-                                      long jobId) throws IOException {
-        return api.getJobLogs(toDto(repository), jobId);
+    public @NotNull JobLogStream openJobLogs(@NotNull Repository repository,
+                                             long jobId) throws IOException {
+        return new InputStreamJobLogStream(api.openJobLogStream(toDto(repository), jobId));
     }
 
     @Override

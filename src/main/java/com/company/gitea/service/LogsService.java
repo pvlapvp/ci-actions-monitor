@@ -5,6 +5,7 @@ import com.company.gitea.model.ActionsConnection;
 import com.company.gitea.model.GiteaStatus;
 import com.company.gitea.model.Repository;
 import com.company.gitea.model.WorkflowJob;
+import com.company.gitea.provider.JobLogStream;
 import com.company.gitea.ui.LogsPanel;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
@@ -16,6 +17,10 @@ import com.intellij.util.concurrency.AppExecutorUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -25,14 +30,16 @@ import java.util.regex.Pattern;
 /**
  * Owns the shared log panel and refreshes the log of the selected running job.
  * <p>
- * Gitea returns the accumulated log as {@code text/plain}; the document is replaced
- * on every update, so lines are not duplicated. Polling stops when the job finishes,
- * when another job is selected, or when the project is closed.
+ * The log is read as a stream, capped at {@link #MAX_LOG_BYTES}, and the document is
+ * replaced on every update, so lines are not duplicated. Polling stops when the job
+ * finishes, when another job is selected, or when the project is closed.
  */
 @Service(Service.Level.PROJECT)
 public final class LogsService implements Disposable {
 
     private static final int REFRESH_INTERVAL_MS = 4_000;
+    private static final int LOG_READ_BUFFER_BYTES = 64 * 1024;
+    private static final int MAX_LOG_BYTES = 10 * 1024 * 1024;
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
     private static final Pattern ANSI_ESCAPE = Pattern.compile("\u001B\\[[;\\d]*[ -/]*[@-~]");
 
@@ -43,6 +50,7 @@ public final class LogsService implements Disposable {
     private final AtomicLong generation = new AtomicLong();
     private final AtomicBoolean loading = new AtomicBoolean();
     private volatile JobSelection current;
+    private volatile JobLogStream activeStream;
     private volatile boolean disposed;
     private volatile String lastRawLog = "";
 
@@ -59,7 +67,7 @@ public final class LogsService implements Disposable {
     /**
      * Called on the EDT when a job node becomes selected.
      */
-    public void selectJob(@NotNull ActionsConnection server,
+    public void selectJob(@NotNull ActionsConnection connection,
                           @NotNull Repository repository,
                           @NotNull WorkflowJob job) {
         if (disposed) {
@@ -67,7 +75,7 @@ public final class LogsService implements Disposable {
         }
 
         JobSelection selection = current;
-        if (selection != null && selection.isSameJob(server, repository, job.id())) {
+        if (selection != null && selection.isSameJob(connection, repository, job.id())) {
             selection.job = job;
             if (job.isActive()) {
                 schedule(selection.generation);
@@ -76,7 +84,8 @@ public final class LogsService implements Disposable {
         }
 
         long newGeneration = generation.incrementAndGet();
-        selection = new JobSelection(newGeneration, server, repository, job);
+        closeActiveStream();
+        selection = new JobSelection(newGeneration, connection, repository, job);
         current = selection;
         alarm.cancelAllRequests();
         panel.showLoading(buildTitle(selection));
@@ -92,6 +101,7 @@ public final class LogsService implements Disposable {
             current = null;
             generation.incrementAndGet();
             alarm.cancelAllRequests();
+            closeActiveStream();
         }
     }
 
@@ -101,6 +111,7 @@ public final class LogsService implements Disposable {
             return;
         }
         alarm.cancelAllRequests();
+        closeActiveStream();
         loadLogs(selection.generation);
     }
 
@@ -120,32 +131,61 @@ public final class LogsService implements Disposable {
         AppExecutorUtil.getAppExecutorService().execute(() -> {
             WorkflowJob freshJob = null;
             String logs = null;
+            boolean truncated = false;
+            boolean cancelled = false;
             Exception jobError = null;
             Exception logError = null;
 
             try {
-                freshJob = monitorService.loadJob(selection.server, selection.repository, selection.job.id());
-            } catch (ProcessCanceledException e) {
-                loading.set(false);
-                return;
-            } catch (Exception e) {
-                jobError = e;
-            }
+                try {
+                    freshJob = monitorService.loadJob(selection.connection, selection.repository, selection.job.id());
+                } catch (ProcessCanceledException e) {
+                    return;
+                } catch (Exception e) {
+                    jobError = e;
+                }
 
-            try {
-                logs = monitorService.loadJobLogs(selection.server, selection.repository, selection.job.id());
-            } catch (ProcessCanceledException e) {
+                JobLogStream logStream = null;
+                try {
+                    logStream = monitorService.openJobLogs(
+                            selection.connection,
+                            selection.repository,
+                            selection.job.id()
+                    );
+                    if (isCancelled(selection, expectedGeneration)) {
+                        cancelled = true;
+                    } else {
+                        activeStream = logStream;
+                        LogRead result = readLog(selection, expectedGeneration, logStream);
+                        if (result == null) {
+                            cancelled = true;
+                        } else {
+                            logs = result.text();
+                            truncated = result.truncated();
+                        }
+                    }
+                } catch (ProcessCanceledException e) {
+                    cancelled = true;
+                } catch (Exception e) {
+                    logError = e;
+                } finally {
+                    if (logStream != null) {
+                        if (activeStream == logStream) {
+                            activeStream = null;
+                        }
+                        closeQuietly(logStream);
+                    }
+                }
+            } finally {
                 loading.set(false);
-                return;
-            } catch (Exception e) {
-                logError = e;
             }
 
             String finalLogs = logs;
+            boolean finalTruncated = truncated;
+            boolean finalCancelled = cancelled;
             WorkflowJob finalFreshJob = freshJob;
             Exception finalLogError = logError;
             Exception finalJobError = jobError;
-            loading.set(false);
 
             ApplicationManager.getApplication().invokeLater(() -> {
                 if (disposed || project.isDisposed()) {
@@ -154,17 +194,65 @@ public final class LogsService implements Disposable {
                 if (generation.get() != expectedGeneration || current != selection) {
                     // A new job was selected while this request was in flight. Its
                     // initial load was skipped by the in-flight guard, so start it now.
-                    loadLogs(generation.get());
+                    if (current != null) {
+                        loadLogs(generation.get());
+                    }
                     return;
                 }
-                onLogLoaded(selection, finalFreshJob, finalLogs, finalLogError, finalJobError);
+                if (finalCancelled) {
+                    return;
+                }
+                onLogLoaded(selection, finalFreshJob, finalLogs, finalTruncated,
+                        finalLogError, finalJobError);
             });
         });
+    }
+
+    private @Nullable LogRead readLog(@NotNull JobSelection selection,
+                                       long expectedGeneration,
+                                       @NotNull JobLogStream logStream) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        byte[] chunk = new byte[LOG_READ_BUFFER_BYTES];
+        boolean truncated = false;
+
+        try (InputStream input = logStream.stream()) {
+            while (true) {
+                if (isCancelled(selection, expectedGeneration)) {
+                    return null;
+                }
+                int read = input.read(chunk);
+                if (read < 0) {
+                    break;
+                }
+                int remaining = MAX_LOG_BYTES - buffer.size();
+                if (remaining <= 0) {
+                    truncated = true;
+                    break;
+                }
+                int toWrite = Math.min(read, remaining);
+                buffer.write(chunk, 0, toWrite);
+                if (toWrite < read || buffer.size() >= MAX_LOG_BYTES) {
+                    truncated = true;
+                    break;
+                }
+            }
+        }
+
+        return new LogRead(buffer.toString(StandardCharsets.UTF_8), truncated);
+    }
+
+    private boolean isCancelled(@NotNull JobSelection selection, long expectedGeneration) {
+        return disposed
+                || project.isDisposed()
+                || Thread.currentThread().isInterrupted()
+                || generation.get() != expectedGeneration
+                || current != selection;
     }
 
     private void onLogLoaded(@NotNull JobSelection selection,
                              @Nullable WorkflowJob freshJob,
                              @Nullable String logs,
+                             boolean truncated,
                              @Nullable Exception logError,
                              @Nullable Exception jobError) {
         if (freshJob != null) {
@@ -179,6 +267,9 @@ public final class LogsService implements Disposable {
             lastRawLog = logs;
             String display = clean(logs);
             String statusText = status.displayName() + " • updated " + LocalTime.now().format(TIME_FORMAT);
+            if (truncated) {
+                statusText += " • log truncated at " + (MAX_LOG_BYTES / (1024 * 1024)) + " MB";
+            }
             if (status.isActive() && !jobUnavailable) {
                 statusText += " • auto-refresh every " + (REFRESH_INTERVAL_MS / 1000) + "s";
             }
@@ -238,8 +329,24 @@ public final class LogsService implements Disposable {
         alarm.addRequest(() -> loadLogs(expectedGeneration), REFRESH_INTERVAL_MS);
     }
 
+    private void closeActiveStream() {
+        JobLogStream stream = activeStream;
+        activeStream = null;
+        if (stream != null) {
+            closeQuietly(stream);
+        }
+    }
+
+    private static void closeQuietly(@NotNull JobLogStream stream) {
+        try {
+            stream.close();
+        } catch (IOException ignored) {
+            // Best effort: the selection is already changing.
+        }
+    }
+
     private static @NotNull String buildTitle(@NotNull JobSelection selection) {
-        return selection.server.displayName() + " / " + selection.repository.displayName()
+        return selection.connection.displayName() + " / " + selection.repository.displayName()
                 + " / " + selection.job.displayName();
     }
 
@@ -266,27 +373,31 @@ public final class LogsService implements Disposable {
         current = null;
         generation.incrementAndGet();
         alarm.cancelAllRequests();
+        closeActiveStream();
         alarm.dispose();
+    }
+
+    private record LogRead(@NotNull String text, boolean truncated) {
     }
 
     private static final class JobSelection {
         private final long generation;
-        private final ActionsConnection server;
+        private final ActionsConnection connection;
         private final Repository repository;
         private volatile WorkflowJob job;
 
         private JobSelection(long generation,
-                             ActionsConnection server,
+                             ActionsConnection connection,
                              Repository repository,
                              WorkflowJob job) {
             this.generation = generation;
-            this.server = server;
+            this.connection = connection;
             this.repository = repository;
             this.job = job;
         }
 
-        private boolean isSameJob(ActionsConnection server, Repository repository, long jobId) {
-            return this.server.id().equals(server.id())
+        private boolean isSameJob(ActionsConnection connection, Repository repository, long jobId) {
+            return this.connection.id().equals(connection.id())
                     && this.repository.displayName().equals(repository.displayName())
                     && this.job.id() == jobId;
         }

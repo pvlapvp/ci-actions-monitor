@@ -8,6 +8,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -89,6 +90,14 @@ public final class GiteaApiClient {
         return execute(path, "text/plain, */*;q=0.8");
     }
 
+    /**
+     * Opens a text resource as a stream. The caller owns the returned stream and must
+     * close it; closing the stream also releases the HTTP connection.
+     */
+    public @NotNull InputStream openTextStream(@NotNull String path) throws IOException {
+        return executeStream(path, "text/plain, */*;q=0.8");
+    }
+
     public @NotNull String getVersion() throws IOException {
         JsonObject json = getJsonObject("/version");
         return json.has("version") ? json.get("version").getAsString() : "unknown";
@@ -97,25 +106,12 @@ public final class GiteaApiClient {
     private String execute(@NotNull String path, @NotNull String accept) throws IOException {
         checkInterrupted();
 
-        String normalizedPath = path.startsWith("/") ? path : "/" + path;
-        URI uri;
-        try {
-            uri = URI.create(apiBaseUrl + normalizedPath);
-        } catch (IllegalArgumentException e) {
-            throw new IOException("Invalid Gitea request URL: " + normalizedPath, e);
-        }
-
-        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
-                .timeout(requestTimeout)
-                .header("Accept", accept)
-                .GET();
-        if (!token.isBlank()) {
-            builder.header("Authorization", "token " + token);
-        }
+        String normalizedPath = normalizePath(path);
+        URI uri = createUri(normalizedPath);
 
         try {
             HttpResponse<String> response = httpClient.send(
-                    builder.build(),
+                    newRequest(uri, accept),
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
             );
             checkInterrupted();
@@ -133,6 +129,85 @@ public final class GiteaApiClient {
                     "Gitea request timed out after " + requestTimeout.toSeconds() + " seconds: " + normalizedPath,
                     e
             );
+        }
+    }
+
+    private InputStream executeStream(@NotNull String path, @NotNull String accept) throws IOException {
+        checkInterrupted();
+
+        String normalizedPath = normalizePath(path);
+        URI uri = createUri(normalizedPath);
+
+        try {
+            HttpResponse<InputStream> response = httpClient.send(
+                    newRequest(uri, accept),
+                    HttpResponse.BodyHandlers.ofInputStream()
+            );
+
+            try {
+                checkInterrupted();
+            } catch (IOException e) {
+                closeQuietly(response.body());
+                throw e;
+            }
+
+            int status = response.statusCode();
+            if (status >= 400) {
+                try (InputStream body = response.body()) {
+                    throw createApiException(status, normalizedPath, readErrorBody(body));
+                }
+            }
+            return response.body();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Gitea request was cancelled", e);
+        } catch (HttpTimeoutException e) {
+            throw new IOException(
+                    "Gitea request timed out after " + requestTimeout.toSeconds() + " seconds: " + normalizedPath,
+                    e
+            );
+        }
+    }
+
+    private HttpRequest newRequest(@NotNull URI uri, @NotNull String accept) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
+                .timeout(requestTimeout)
+                .header("Accept", accept)
+                .GET();
+        if (!token.isBlank()) {
+            builder.header("Authorization", "token " + token);
+        }
+        return builder.build();
+    }
+
+    private @NotNull String normalizePath(@NotNull String path) {
+        return path.startsWith("/") ? path : "/" + path;
+    }
+
+    private @NotNull URI createUri(@NotNull String normalizedPath) throws IOException {
+        try {
+            return URI.create(apiBaseUrl + normalizedPath);
+        } catch (IllegalArgumentException e) {
+            throw new IOException("Invalid Gitea request URL: " + normalizedPath, e);
+        }
+    }
+
+    private static @NotNull String readErrorBody(@NotNull InputStream stream) {
+        try {
+            byte[] bytes = stream.readNBytes(MAX_ERROR_BODY + 1);
+            int length = Math.min(bytes.length, MAX_ERROR_BODY);
+            String text = new String(bytes, 0, length, StandardCharsets.UTF_8);
+            return bytes.length > MAX_ERROR_BODY ? text + "..." : text;
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
+    private static void closeQuietly(@NotNull InputStream stream) {
+        try {
+            stream.close();
+        } catch (IOException ignored) {
+            // Best effort: the request is already failing.
         }
     }
 

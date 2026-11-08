@@ -6,6 +6,7 @@ import com.company.gitea.model.Workflow;
 import com.company.gitea.model.WorkflowJob;
 import com.company.gitea.model.WorkflowRun;
 import com.company.gitea.provider.ActionsProvider;
+import com.company.gitea.provider.JobLogStream;
 import com.company.gitea.provider.Page;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.progress.ProcessCanceledException;
@@ -144,11 +145,11 @@ public final class ActionsMonitorService {
         return provider(connection).getJob(repository, jobId);
     }
 
-    public @NotNull String loadJobLogs(@NotNull ActionsConnection connection,
-                                       @NotNull Repository repository,
-                                       long jobId) throws IOException {
+    public @NotNull JobLogStream openJobLogs(@NotNull ActionsConnection connection,
+                                             @NotNull Repository repository,
+                                             long jobId) throws IOException {
         checkCancelled();
-        return provider(connection).getJobLogs(repository, jobId);
+        return provider(connection).openJobLogs(repository, jobId);
     }
 
     private @NotNull ActionsProvider provider(@NotNull ActionsConnection connection) throws IOException {

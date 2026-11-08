@@ -11,6 +11,7 @@ import com.google.gson.reflect.TypeToken;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -145,6 +146,13 @@ public final class ActionsApi {
      * An empty body is valid; HTTP 404 means that the job has not started or logs
      * were cleaned up.
      */
+    public @NotNull InputStream openJobLogStream(@NotNull GiteaRepositoryDto repository,
+                                                 long jobId) throws IOException {
+        return client.openTextStream(
+                "/repos/" + repoPath(repository.fullName) + "/actions/jobs/" + jobId + "/logs"
+        );
+    }
+
     public @NotNull String getJobLogs(@NotNull GiteaRepositoryDto repository, long jobId) throws IOException {
         String logs = client.getText(
                 "/repos/" + repoPath(repository.fullName) + "/actions/jobs/" + jobId + "/logs"
