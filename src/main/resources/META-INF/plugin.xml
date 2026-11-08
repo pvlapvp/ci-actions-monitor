@@ -37,6 +37,7 @@
 
     <extensions defaultExtensionNs="ru.pvlapvp.gitea-actions-monitor">
         <actionsProvider implementation="com.company.gitea.provider.gitea.GiteaProviderFactory"/>
+        <actionsProvider implementation="com.company.gitea.provider.github.GitHubProviderFactory"/>
     </extensions>
 
     <actions>

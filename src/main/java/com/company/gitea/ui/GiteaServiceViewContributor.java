@@ -35,7 +35,7 @@ public final class GiteaServiceViewContributor implements ServiceViewContributor
         if (nodes.isEmpty()) {
             nodes.add(new GiteaMessageNode(
                     "gitea:no-servers",
-                    "No Gitea servers configured.\n\n"
+                    "No CI/CD connections configured.\n\n"
                             + "Open Settings | Tools | Gitea Actions Monitor and add a server URL and access token."
             ));
         }
@@ -44,7 +44,7 @@ public final class GiteaServiceViewContributor implements ServiceViewContributor
 
     @Override
     public @NotNull ServiceViewDescriptor getViewDescriptor(@NotNull Project project) {
-        return new SimpleServiceViewDescriptor("Gitea Actions", AllIcons.Nodes.Services, "gitea-actions-root") {
+        return new SimpleServiceViewDescriptor("CI Actions", AllIcons.Nodes.Services, "gitea-actions-root") {
             @Override
             public ActionGroup getToolbarActions() {
                 DefaultActionGroup group = new DefaultActionGroup();

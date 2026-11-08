@@ -46,6 +46,7 @@ public final class GiteaServerDialog extends DialogWrapper {
     private JPasswordField tokenField;
     private JBIntSpinner timeoutSpinner;
     private JBTextArea repositoriesArea;
+    private JBLabel providerHint;
 
     public GiteaServerDialog(@Nullable Component parent, @Nullable ActionsConnection existing) {
         super(parent, true);
@@ -57,7 +58,7 @@ public final class GiteaServerDialog extends DialogWrapper {
 
     @Override
     protected @Nullable JComponent createCenterPanel() {
-        providerTypeCombo = new JComboBox<>(new ProviderType[]{ProviderType.GITEA});
+        providerTypeCombo = new JComboBox<>(ProviderType.values());
         if (existing != null) {
             providerTypeCombo.setSelectedItem(existing.providerType());
         }
@@ -72,6 +73,8 @@ public final class GiteaServerDialog extends DialogWrapper {
         apiUrlField.getEmptyText().setText("Optional; derived automatically");
 
         tokenField = new JPasswordField();
+        providerHint = new JBLabel();
+        providerTypeCombo.addActionListener(event -> updateProviderHints());
         timeoutSpinner = new JBIntSpinner(
                 existing == null ? 30 : existing.safeTimeoutSeconds(),
                 5,
@@ -92,6 +95,7 @@ public final class GiteaServerDialog extends DialogWrapper {
 
         JPanel panel = FormBuilder.createFormBuilder()
                 .addLabeledComponent(new JBLabel("Provider:"), providerTypeCombo, 1, false)
+                .addComponent(providerHint)
                 .addLabeledComponent(new JBLabel("Name:"), nameField, 1, false)
                 .addLabeledComponent(new JBLabel("Server URL:"), urlField, 1, false)
                 .addLabeledComponent(new JBLabel("API URL:"), apiUrlField, 1, false)
@@ -106,6 +110,7 @@ public final class GiteaServerDialog extends DialogWrapper {
                 )
                 .getPanel();
         panel.setBorder(JBUI.Borders.empty(10));
+        updateProviderHints();
         return panel;
     }
 
@@ -116,7 +121,13 @@ public final class GiteaServerDialog extends DialogWrapper {
         try {
             factory = ProviderRegistry.getInstance().factory(providerType);
         } catch (RuntimeException e) {
-            return new ValidationInfo("Provider " + providerType.displayName() + " is not available", providerTypeCombo);
+            String message = e.getMessage();
+            return new ValidationInfo(
+                    message == null || message.isBlank()
+                            ? "Provider " + providerType.displayName() + " is not available"
+                            : message,
+                    providerTypeCombo
+            );
         }
 
         String url = factory.normalizeServerUrl(urlField.getText());
@@ -130,6 +141,24 @@ public final class GiteaServerDialog extends DialogWrapper {
         String apiUrl = apiUrlField.getText().trim();
         if (!apiUrl.isEmpty() && !isValidHttpUrl(apiUrl)) {
             return new ValidationInfo("Enter a valid http(s) API URL", apiUrlField);
+        }
+
+        try {
+            factory.resolveApiUrl(new ActionsConnection(
+                    connectionId,
+                    providerType,
+                    "",
+                    url,
+                    apiUrl.isEmpty() ? null : apiUrl,
+                    30,
+                    List.of()
+            ));
+        } catch (RuntimeException e) {
+            String message = e.getMessage();
+            return new ValidationInfo(
+                    message == null || message.isBlank() ? "Invalid server or API URL" : message,
+                    urlField
+            );
         }
 
         if (existing == null && getToken().isBlank()) {
@@ -180,6 +209,21 @@ public final class GiteaServerDialog extends DialogWrapper {
     private @NotNull ProviderType getProviderType() {
         Object selected = providerTypeCombo == null ? null : providerTypeCombo.getSelectedItem();
         return selected instanceof ProviderType type ? type : ProviderType.GITEA;
+    }
+
+    private void updateProviderHints() {
+        if (urlField == null || providerHint == null) {
+            return;
+        }
+        ProviderType providerType = getProviderType();
+        if (providerType == ProviderType.GITHUB) {
+            urlField.getEmptyText().setText("https://github.com or https://ghe.example.com");
+            providerHint.setText("<html><font color='gray'>Fine-grained token: Actions — Read-only, "
+                    + "Metadata — Read-only, Contents — No access.</font></html>");
+        } else {
+            urlField.getEmptyText().setText("https://gitea.example.com");
+            providerHint.setText("<html><font color='gray'>Token scopes: read:repository and read:user.</font></html>");
+        }
     }
 
     private @NotNull String normalizeServerUrl(@NotNull ProviderType providerType) {

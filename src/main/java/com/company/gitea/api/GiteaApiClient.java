@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
+import com.company.gitea.provider.ActionsApiException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -35,12 +36,25 @@ public final class GiteaApiClient {
     private final Duration requestTimeout;
 
     public GiteaApiClient(@NotNull String serverUrl, @NotNull String token, int timeoutSeconds) {
+        this(serverUrl, null, token, timeoutSeconds);
+    }
+
+    public GiteaApiClient(@NotNull String serverUrl,
+                          @Nullable String apiUrl,
+                          @NotNull String token,
+                          int timeoutSeconds) {
         String normalizedUrl = normalizeServerUrl(serverUrl);
         if (normalizedUrl.isBlank()) {
             throw new IllegalArgumentException("Gitea server URL is empty");
         }
 
-        this.apiBaseUrl = normalizedUrl + "/api/v1";
+        String baseUrl = apiUrl == null || apiUrl.isBlank()
+                ? normalizedUrl + "/api/v1"
+                : apiUrl.trim();
+        while (baseUrl.endsWith("/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        }
+        this.apiBaseUrl = baseUrl;
         this.token = token.trim();
         this.requestTimeout = Duration.ofSeconds(Math.max(5, timeoutSeconds));
         this.httpClient = HttpClient.newBuilder()
@@ -50,7 +64,7 @@ public final class GiteaApiClient {
         try {
             URI.create(apiBaseUrl);
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid Gitea server URL: " + normalizedUrl, e);
+            throw new IllegalArgumentException("Invalid Gitea API URL: " + apiBaseUrl, e);
         }
     }
 
@@ -221,21 +235,21 @@ public final class GiteaApiClient {
         if (status == 401) {
             return new GiteaApiException(
                     status,
-                    GiteaApiException.Kind.AUTHENTICATION,
+                    ActionsApiException.Kind.AUTHENTICATION,
                     "Authentication failed (HTTP 401). Check the access token in Settings | Tools | Gitea Actions Monitor."
             );
         }
         if (status == 403) {
             return new GiteaApiException(
                     status,
-                    GiteaApiException.Kind.AUTHENTICATION,
+                    ActionsApiException.Kind.AUTHENTICATION,
                     "Access denied (HTTP 403). The token may lack read:repository/read:user permissions."
             );
         }
         if (status == 404) {
             return new GiteaApiException(
                     status,
-                    GiteaApiException.Kind.NOT_FOUND,
+                    ActionsApiException.Kind.NOT_FOUND,
                     "Not found (HTTP 404): " + path
                             + ". The repository, workflow, run or job may not exist; job logs may not be available yet."
             );
@@ -249,7 +263,7 @@ public final class GiteaApiClient {
         if (!detail.isEmpty()) {
             message += " — " + detail;
         }
-        return new GiteaApiException(status, GiteaApiException.Kind.OTHER, message);
+        return new GiteaApiException(status, ActionsApiException.Kind.OTHER, message);
     }
 
     /**
@@ -270,42 +284,5 @@ public final class GiteaApiClient {
             url = url.substring(0, url.length() - "/api/v1".length());
         }
         return url;
-    }
-
-    /**
-     * HTTP error returned by Gitea.
-     */
-    public static final class GiteaApiException extends IOException {
-
-        public enum Kind {
-            AUTHENTICATION,
-            NOT_FOUND,
-            OTHER
-        }
-
-        private final int statusCode;
-        private final Kind kind;
-
-        private GiteaApiException(int statusCode, @NotNull Kind kind, @NotNull String message) {
-            super(message);
-            this.statusCode = statusCode;
-            this.kind = kind;
-        }
-
-        public int getStatusCode() {
-            return statusCode;
-        }
-
-        public @NotNull Kind getKind() {
-            return kind;
-        }
-
-        public boolean isAuthenticationError() {
-            return kind == Kind.AUTHENTICATION;
-        }
-
-        public boolean isNotFound() {
-            return kind == Kind.NOT_FOUND;
-        }
     }
 }

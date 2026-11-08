@@ -1,6 +1,6 @@
 package com.company.gitea.service;
 
-import com.company.gitea.api.GiteaApiClient.GiteaApiException;
+import com.company.gitea.provider.ActionsApiException;
 import com.company.gitea.model.ActionsConnection;
 import com.company.gitea.model.GiteaStatus;
 import com.company.gitea.model.Repository;
@@ -260,7 +260,7 @@ public final class LogsService implements Disposable {
         }
         String title = buildTitle(selection);
         GiteaStatus status = selection.job.state();
-        boolean jobUnavailable = jobError instanceof GiteaApiException jobApiError
+        boolean jobUnavailable = jobError instanceof ActionsApiException jobApiError
                 && (jobApiError.isAuthenticationError() || jobApiError.isNotFound());
 
         if (logs != null) {
@@ -283,7 +283,7 @@ public final class LogsService implements Disposable {
             return;
         }
 
-        if (logError instanceof GiteaApiException apiException) {
+        if (logError instanceof ActionsApiException apiException) {
             if (apiException.isAuthenticationError()) {
                 panel.showError(title, "Cannot load job log:\n\n" + apiException.getMessage(), "Authentication error");
                 return;

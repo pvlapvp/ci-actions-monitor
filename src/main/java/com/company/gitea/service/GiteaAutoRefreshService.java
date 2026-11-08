@@ -1,6 +1,6 @@
 package com.company.gitea.service;
 
-import com.company.gitea.api.GiteaApiClient.GiteaApiException;
+import com.company.gitea.provider.ActionsApiException;
 import com.company.gitea.model.WorkflowJob;
 import com.company.gitea.model.WorkflowRun;
 import com.company.gitea.ui.GiteaJobNode;
@@ -41,6 +41,7 @@ public final class GiteaAutoRefreshService implements Disposable {
     private final Map<String, WatchedWorkflow> workflows = new ConcurrentHashMap<>();
     private final Map<String, WatchedRun> runs = new ConcurrentHashMap<>();
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
+    private volatile long pauseUntilMillis;
     private volatile boolean disposed;
 
     public GiteaAutoRefreshService(@NotNull Project project) {
@@ -95,7 +96,19 @@ public final class GiteaAutoRefreshService implements Disposable {
     public void clear() {
         workflows.clear();
         runs.clear();
+        pauseUntilMillis = 0;
         alarm.cancelAllRequests();
+    }
+
+    private void applyRateLimitPause(@NotNull ActionsApiException e) {
+        if (!e.isRateLimited()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long retryAt = e.getRetryAfter() == null
+                ? now + 60_000
+                : e.getRetryAfter().toEpochMilli();
+        pauseUntilMillis = Math.max(pauseUntilMillis, retryAt);
     }
 
     private void schedule() {
@@ -108,6 +121,10 @@ public final class GiteaAutoRefreshService implements Disposable {
 
     private void tick() {
         if (disposed || project.isDisposed()) {
+            return;
+        }
+        if (System.currentTimeMillis() < pauseUntilMillis) {
+            schedule();
             return;
         }
         try {
@@ -147,10 +164,11 @@ public final class GiteaAutoRefreshService implements Disposable {
             }
         } catch (ProcessCanceledException e) {
             throw e;
-        } catch (GiteaApiException e) {
+        } catch (ActionsApiException e) {
             if (e.isAuthenticationError() || e.isNotFound()) {
                 workflows.remove(node.id(), watched);
             }
+            applyRateLimitPause(e);
             LOG.debug("Gitea run refresh failed for " + node.id() + ": " + e.getMessage());
         } catch (Exception e) {
             LOG.debug("Gitea run refresh failed for " + node.id(), e);
@@ -182,10 +200,11 @@ public final class GiteaAutoRefreshService implements Disposable {
             }
         } catch (ProcessCanceledException e) {
             throw e;
-        } catch (GiteaApiException e) {
+        } catch (ActionsApiException e) {
             if (e.isAuthenticationError() || e.isNotFound()) {
                 runs.remove(node.id(), watched);
             }
+            applyRateLimitPause(e);
             LOG.debug("Gitea job refresh failed for " + node.id() + ": " + e.getMessage());
         } catch (Exception e) {
             LOG.debug("Gitea job refresh failed for " + node.id(), e);

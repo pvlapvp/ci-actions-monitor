@@ -26,6 +26,10 @@ public final class GiteaProviderFactory implements ActionsProviderFactory {
 
     @Override
     public @NotNull String resolveApiUrl(@NotNull ActionsConnection connection) {
+        String override = connection.apiUrl();
+        if (override != null && !override.isBlank()) {
+            return override.trim();
+        }
         String baseUrl = normalizeServerUrl(connection.serverUrl());
         return baseUrl.isBlank() ? "" : baseUrl + "/api/v1";
     }
@@ -36,6 +40,7 @@ public final class GiteaProviderFactory implements ActionsProviderFactory {
         String normalizedToken = token == null ? "" : token.trim();
         GiteaApiClient client = new GiteaApiClient(
                 normalizeServerUrl(connection.serverUrl()),
+                connection.apiUrl(),
                 normalizedToken,
                 connection.safeTimeoutSeconds()
         );

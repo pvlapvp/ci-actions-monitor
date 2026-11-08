@@ -4,7 +4,6 @@ import com.company.gitea.model.ActionsConnection;
 import com.company.gitea.model.Repository;
 import com.company.gitea.service.ActionsMonitorService;
 import com.intellij.execution.services.ServiceViewLazyContributor;
-import com.intellij.icons.AllIcons;
 import com.intellij.ide.projectView.PresentationData;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.project.Project;
@@ -41,7 +40,7 @@ public final class GiteaServerNode extends GiteaServiceNode implements ServiceVi
             children.add(new GiteaMessageNode(
                     id() + "/empty",
                     "No repositories found. Add one in Settings | Tools | Gitea Actions Monitor "
-                            + "or make sure the token has read:repository permission."
+                            + "or make sure the token can access repositories."
             ));
         }
         return children;
@@ -52,8 +51,8 @@ public final class GiteaServerNode extends GiteaServiceNode implements ServiceVi
         PresentationData data = new PresentationData();
         data.setPresentableText(connection.displayName());
         data.setLocationString(connection.serverUrl());
-        data.setIcon(AllIcons.Nodes.Services);
-        data.setTooltip(connection.serverUrl());
+        data.setIcon(GiteaUi.providerIcon(connection.providerType()));
+        data.setTooltip(connection.providerType().displayName() + " • " + connection.serverUrl());
         return data;
     }
 

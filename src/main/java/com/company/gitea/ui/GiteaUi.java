@@ -1,6 +1,7 @@
 package com.company.gitea.ui;
 
 import com.company.gitea.model.GiteaStatus;
+import com.company.gitea.model.ProviderType;
 import com.intellij.icons.AllIcons;
 import com.intellij.ui.JBColor;
 import org.jetbrains.annotations.NotNull;
@@ -14,6 +15,12 @@ import java.awt.Color;
 final class GiteaUi {
 
     private GiteaUi() {
+    }
+
+    static @NotNull Icon providerIcon(@NotNull ProviderType providerType) {
+        return providerType == ProviderType.GITHUB
+                ? AllIcons.Vcs.Vendors.Github
+                : AllIcons.Nodes.Services;
     }
 
     static @NotNull Icon statusIcon(@NotNull GiteaStatus status) {

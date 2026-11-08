@@ -3,6 +3,7 @@ package com.company.gitea.provider;
 import com.company.gitea.model.ActionsConnection;
 import com.company.gitea.model.ProviderType;
 import com.company.gitea.provider.gitea.GiteaProviderFactory;
+import com.company.gitea.provider.github.GitHubProviderFactory;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.extensions.ExtensionPointName;
@@ -26,9 +27,10 @@ public final class ProviderRegistry {
     private final Map<ProviderType, ActionsProviderFactory> factories = new EnumMap<>(ProviderType.class);
 
     public ProviderRegistry() {
-        // The built-in Gitea provider must stay available even if no extension is
+        // The built-in providers must stay available even if no extension is
         // contributed, for example while the plugin is being loaded or upgraded.
         factories.put(ProviderType.GITEA, new GiteaProviderFactory());
+        factories.put(ProviderType.GITHUB, new GitHubProviderFactory());
         for (ActionsProviderFactory factory : EP.getExtensionList()) {
             factories.put(factory.providerType(), factory);
         }

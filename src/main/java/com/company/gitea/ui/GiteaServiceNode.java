@@ -1,6 +1,6 @@
 package com.company.gitea.ui;
 
-import com.company.gitea.api.GiteaApiClient.GiteaApiException;
+import com.company.gitea.provider.ActionsApiException;
 import com.intellij.execution.services.ServiceViewDescriptor;
 import com.intellij.execution.services.ServiceViewProvidingContributor;
 import com.intellij.ide.projectView.PresentationData;
@@ -120,7 +120,7 @@ public abstract class GiteaServiceNode
     }
 
     private static @NotNull String errorMessage(@NotNull Throwable throwable) {
-        if (throwable instanceof GiteaApiException apiException) {
+        if (throwable instanceof ActionsApiException apiException) {
             return apiException.getMessage();
         }
         if (throwable instanceof IOException && throwable.getMessage() != null) {

@@ -29,7 +29,7 @@ final class GiteaActions {
     }
 
     static @NotNull AnAction openUrl(@NotNull String url) {
-        return new AnAction("Open in Gitea", "Open in the default browser", AllIcons.General.Web) {
+        return new AnAction("Open in Browser", "Open in the default browser", AllIcons.General.Web) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent event) {
                 com.intellij.ide.BrowserUtil.browse(url);
