@@ -1,8 +1,10 @@
 package com.company.gitea.service;
 
-import com.company.gitea.api.ActionsApi;
-import com.company.gitea.api.GiteaApiClient;
+import com.company.gitea.model.ActionsConnection;
 import com.company.gitea.model.GiteaServer;
+import com.company.gitea.provider.ActionsProvider;
+import com.company.gitea.provider.ProviderRegistry;
+import com.company.gitea.provider.gitea.GiteaProviderFactory;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
 import org.jetbrains.annotations.NotNull;
@@ -14,7 +16,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Application-level cache of {@link GiteaApiClient} instances, one per server.
+ * Application-level cache of {@link ActionsProvider} instances, one per server.
  * <p>
  * The cache is invalidated when the URL/timeout changes or when settings explicitly
  * call {@link #invalidate(String)}. Tokens are read from PasswordSafe only on a cache
@@ -23,18 +25,18 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service(Service.Level.APP)
 public final class GiteaConnectionService {
 
-    private final Map<String, CachedClient> cache = new ConcurrentHashMap<>();
+    private final Map<String, CachedProvider> cache = new ConcurrentHashMap<>();
 
     public static @NotNull GiteaConnectionService getInstance() {
         return ApplicationManager.getApplication().getService(GiteaConnectionService.class);
     }
 
-    public @NotNull ActionsApi getActionsApi(@NotNull GiteaServer server) throws IOException {
+    public @NotNull ActionsProvider getProvider(@NotNull GiteaServer server) throws IOException {
         requireConfigured(server);
 
-        CachedClient current = cache.get(server.id());
+        CachedProvider current = cache.get(server.id());
         if (current != null && current.matches(server)) {
-            return new ActionsApi(current.client);
+            return current.provider;
         }
 
         String token = GiteaCredentialService.getInstance().getTokenBlocking(server.id());
@@ -43,13 +45,14 @@ public final class GiteaConnectionService {
                     + "\". Open Settings | Tools | Gitea Actions Monitor and set a token.");
         }
 
-        GiteaApiClient client = new GiteaApiClient(server.normalizedUrl(), token, server.safeTimeoutSeconds());
-        cache.put(server.id(), new CachedClient(
+        ActionsConnection connection = GiteaProviderFactory.toConnection(server);
+        ActionsProvider provider = ProviderRegistry.getInstance().create(connection, token);
+        cache.put(server.id(), new CachedProvider(
                 server.normalizedUrl(),
                 server.safeTimeoutSeconds(),
-                client
+                provider
         ));
-        return new ActionsApi(client);
+        return provider;
     }
 
     /**
@@ -65,7 +68,9 @@ public final class GiteaConnectionService {
         if (effectiveToken.isEmpty()) {
             throw new IOException("Access token is empty");
         }
-        return new GiteaApiClient(server.normalizedUrl(), effectiveToken, server.safeTimeoutSeconds()).getVersion();
+        ActionsConnection connection = GiteaProviderFactory.toConnection(server);
+        ActionsProvider provider = ProviderRegistry.getInstance().create(connection, effectiveToken);
+        return provider.testConnection().version();
     }
 
     public void invalidate(@NotNull String serverId) {
@@ -86,15 +91,15 @@ public final class GiteaConnectionService {
      * Deliberately has no {@code toString()} that could expose credentials.
      * A token change is handled by {@link #invalidate(String)} from settings.
      */
-    private static final class CachedClient {
+    private static final class CachedProvider {
         private final String normalizedUrl;
         private final int timeoutSeconds;
-        private final GiteaApiClient client;
+        private final ActionsProvider provider;
 
-        private CachedClient(String normalizedUrl, int timeoutSeconds, GiteaApiClient client) {
+        private CachedProvider(String normalizedUrl, int timeoutSeconds, ActionsProvider provider) {
             this.normalizedUrl = normalizedUrl;
             this.timeoutSeconds = timeoutSeconds;
-            this.client = client;
+            this.provider = provider;
         }
 
         private boolean matches(@NotNull GiteaServer server) {

@@ -1,11 +1,12 @@
 package com.company.gitea.service;
 
-import com.company.gitea.api.ActionsApi;
 import com.company.gitea.model.GiteaServer;
 import com.company.gitea.model.Repository;
 import com.company.gitea.model.Workflow;
 import com.company.gitea.model.WorkflowJob;
 import com.company.gitea.model.WorkflowRun;
+import com.company.gitea.provider.ActionsProvider;
+import com.company.gitea.provider.Page;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.Project;
@@ -16,16 +17,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Project-level access to Gitea data. All methods perform blocking HTTP calls and
+ * Project-level access to CI/CD data. All methods perform blocking network calls and
  * must be called from a background thread. The project's disposed state is checked
  * between paginated requests.
  */
 @Service(Service.Level.PROJECT)
 public final class ActionsMonitorService {
 
+    public static final int REPOSITORY_PAGE_SIZE = 30;
+    public static final int WORKFLOWS_PAGE_SIZE = 50;
     public static final int RUNS_PAGE_SIZE = 30;
     public static final int JOBS_PAGE_SIZE = 50;
     private static final int MAX_REPOSITORY_PAGES = 10;
+    private static final int MAX_WORKFLOW_PAGES = 20;
 
     private final Project project;
 
@@ -48,12 +52,13 @@ public final class ActionsMonitorService {
         }
 
         // No explicit list: show repositories accessible to the token, with pagination.
+        ActionsProvider provider = provider(server);
         List<Repository> result = new ArrayList<>();
         for (int page = 1; page <= MAX_REPOSITORY_PAGES; page++) {
             checkCancelled();
-            List<Repository> chunk = api(server).getRepositories(page, ActionsApi.DEFAULT_PAGE_SIZE);
-            result.addAll(chunk);
-            if (chunk.size() < ActionsApi.DEFAULT_PAGE_SIZE) {
+            Page<Repository> chunk = provider.getRepositories(page, REPOSITORY_PAGE_SIZE);
+            result.addAll(chunk.items());
+            if (!chunk.hasMore() || chunk.items().size() < REPOSITORY_PAGE_SIZE) {
                 break;
             }
         }
@@ -63,11 +68,19 @@ public final class ActionsMonitorService {
     public @NotNull List<Workflow> loadWorkflows(@NotNull GiteaServer server,
                                                  @NotNull Repository repository) throws IOException {
         checkCancelled();
-        ActionsApi api = api(server);
+        ActionsProvider provider = provider(server);
         // GET /repos/{owner}/{repo} validates the repository and gives a fresh metadata object.
-        Repository actual = api.getRepository(repository.displayName());
-        checkCancelled();
-        return api.getWorkflows(actual);
+        Repository actual = provider.getRepository(repository.displayName());
+        List<Workflow> result = new ArrayList<>();
+        for (int page = 1; page <= MAX_WORKFLOW_PAGES; page++) {
+            checkCancelled();
+            Page<Workflow> chunk = provider.getWorkflows(actual, page, WORKFLOWS_PAGE_SIZE);
+            result.addAll(chunk.items());
+            if (!chunk.hasMore() || chunk.items().isEmpty()) {
+                break;
+            }
+        }
+        return result;
     }
 
     public @NotNull RunList loadRuns(@NotNull GiteaServer server,
@@ -80,16 +93,16 @@ public final class ActionsMonitorService {
             throw new IOException("Workflow \"" + workflow.displayName() + "\" has no id");
         }
 
-        ActionsApi api = api(server);
+        ActionsProvider provider = provider(server);
         List<WorkflowRun> runs = new ArrayList<>();
         int totalCount = 0;
         int pages = Math.max(1, loadedPages);
         for (int page = 1; page <= pages; page++) {
             checkCancelled();
-            ActionsApi.RunPage chunk = api.getWorkflowRuns(repository, workflowId, page, RUNS_PAGE_SIZE);
+            Page<WorkflowRun> chunk = provider.getWorkflowRuns(repository, workflow, page, RUNS_PAGE_SIZE);
             totalCount = Math.max(totalCount, chunk.totalCount());
-            runs.addAll(chunk.runs());
-            if (chunk.runs().size() < RUNS_PAGE_SIZE) {
+            runs.addAll(chunk.items());
+            if (chunk.items().size() < RUNS_PAGE_SIZE) {
                 break;
             }
         }
@@ -101,16 +114,16 @@ public final class ActionsMonitorService {
                                      @NotNull WorkflowRun run,
                                      int loadedPages) throws IOException {
         checkCancelled();
-        ActionsApi api = api(server);
+        ActionsProvider provider = provider(server);
         List<WorkflowJob> jobs = new ArrayList<>();
         int totalCount = 0;
         int pages = Math.max(1, loadedPages);
         for (int page = 1; page <= pages; page++) {
             checkCancelled();
-            ActionsApi.JobPage chunk = api.getRunJobs(repository, run.id(), page, JOBS_PAGE_SIZE);
+            Page<WorkflowJob> chunk = provider.getRunJobs(repository, run.id(), page, JOBS_PAGE_SIZE);
             totalCount = Math.max(totalCount, chunk.totalCount());
-            jobs.addAll(chunk.jobs());
-            if (chunk.jobs().size() < JOBS_PAGE_SIZE) {
+            jobs.addAll(chunk.items());
+            if (chunk.items().size() < JOBS_PAGE_SIZE) {
                 break;
             }
         }
@@ -121,26 +134,26 @@ public final class ActionsMonitorService {
                                         @NotNull Repository repository,
                                         long runId) throws IOException {
         checkCancelled();
-        return api(server).getWorkflowRun(repository, runId);
+        return provider(server).getWorkflowRun(repository, runId);
     }
 
     public @NotNull WorkflowJob loadJob(@NotNull GiteaServer server,
                                         @NotNull Repository repository,
                                         long jobId) throws IOException {
         checkCancelled();
-        return api(server).getJob(repository, jobId);
+        return provider(server).getJob(repository, jobId);
     }
 
     public @NotNull String loadJobLogs(@NotNull GiteaServer server,
                                        @NotNull Repository repository,
                                        long jobId) throws IOException {
         checkCancelled();
-        return api(server).getJobLogs(repository, jobId);
+        return provider(server).getJobLogs(repository, jobId);
     }
 
-    private @NotNull ActionsApi api(@NotNull GiteaServer server) throws IOException {
+    private @NotNull ActionsProvider provider(@NotNull GiteaServer server) throws IOException {
         checkCancelled();
-        return GiteaConnectionService.getInstance().getActionsApi(server);
+        return GiteaConnectionService.getInstance().getProvider(server);
     }
 
     private void checkCancelled() {

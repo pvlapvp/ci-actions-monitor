@@ -15,6 +15,9 @@
 
     <depends>com.intellij.modules.platform</depends>
 
+    <extensionPoint name="actionsProvider"
+                    interface="com.company.gitea.provider.ActionsProviderFactory"/>
+
     <extensions defaultExtensionNs="com.intellij">
         <applicationService serviceImplementation="com.company.gitea.settings.GiteaSettings"/>
 
@@ -30,6 +33,10 @@
         -->
         <serviceViewContributor
                 implementation="com.company.gitea.ui.GiteaServiceViewContributor"/>
+    </extensions>
+
+    <extensions defaultExtensionNs="ru.pvlapvp.gitea-actions-monitor">
+        <actionsProvider implementation="com.company.gitea.provider.gitea.GiteaProviderFactory"/>
     </extensions>
 
     <actions>

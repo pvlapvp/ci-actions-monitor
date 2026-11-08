@@ -22,8 +22,9 @@ final class GiteaUi {
             case FAILED -> AllIcons.RunConfigurations.TestState.Red2;
             case IN_PROGRESS -> AllIcons.RunConfigurations.TestState.Run;
             case QUEUED, WAITING -> AllIcons.RunConfigurations.TestState.Yellow2;
+            case ACTION_REQUIRED -> AllIcons.General.Warning;
             case CANCELLED -> AllIcons.Actions.Cancel;
-            case SKIPPED, UNKNOWN -> AllIcons.General.Information;
+            case SKIPPED, NEUTRAL, STALE, UNKNOWN -> AllIcons.General.Information;
         };
     }
 
@@ -32,8 +33,8 @@ final class GiteaUi {
             case SUCCESS -> JBColor.GREEN;
             case FAILED -> JBColor.RED;
             case IN_PROGRESS -> JBColor.BLUE;
-            case QUEUED, WAITING -> JBColor.ORANGE;
-            case CANCELLED, SKIPPED, UNKNOWN -> JBColor.GRAY;
+            case QUEUED, WAITING, ACTION_REQUIRED -> JBColor.ORANGE;
+            case CANCELLED, SKIPPED, NEUTRAL, STALE, UNKNOWN -> JBColor.GRAY;
         };
     }
 }
