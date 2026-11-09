@@ -11,12 +11,14 @@
         Test connections and store tokens in IntelliJ PasswordSafe.
     ]]></description>
 
-    <idea-version since-build="263"/>
+    <idea-version since-build="262"/>
 
     <depends>com.intellij.modules.platform</depends>
 
-    <extensionPoint name="actionsProvider"
-                    interface="ru.pvlapvp.ciactionsmonitor.provider.ActionsProviderFactory"/>
+    <extensionPoints>
+        <extensionPoint name="actionsProvider"
+                        interface="ru.pvlapvp.ciactionsmonitor.provider.ActionsProviderFactory"/>
+    </extensionPoints>
 
     <extensions defaultExtensionNs="com.intellij">
         <applicationService serviceImplementation="ru.pvlapvp.ciactionsmonitor.settings.ActionsSettings"/>
